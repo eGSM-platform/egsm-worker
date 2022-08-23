@@ -1,0 +1,5 @@
+controller/node_modules/
+modules/egsmengine/node_modules/
+modules/eventrouter/node_modules/
+**/package.json
+**/package-lock.json
