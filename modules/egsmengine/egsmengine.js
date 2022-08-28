@@ -5,7 +5,7 @@ var LogManager = require("../auxiliary/LogManager")
 var fs = require('fs');
 
 // attribute model
-var ATTRIBUTO = {
+var ATTRIBUTE = {
     // initialize instance
     init: function (name, parent, type, use) {
         this.name = name;
@@ -106,10 +106,10 @@ var EVENTO = {
     emitEvent: function (engine) {
         //true -> event was received
         this.setActive();
-        EventManager.emit(this.name, engine.Event_array[this.name]._array_dep);
+        engine.EventAdministrator.emit(this.name, engine.Event_array[this.name]._array_dep);
         this.setUnactive();
         //false -> event was handled (so to disable guard after evaluating sentry)
-        EventManager.emit(this.name, engine.Event_array[this.name]._array_dep);
+        engine.EventAdministrator.emit(this.name, engine.Event_array[this.name]._array_dep);
     },
     // activate event status (when event is received)
     setActive: function () {
@@ -184,7 +184,7 @@ var DATA = {
                 var dep = [this.stage];
                 if (this._array_dep.length > 0)
                     Array.prototype.push.apply(dep, this._array_dep);
-                EventManager.emit(this.name, dep);
+                engine.EventAdministrator.emit(this.name, dep);
             }
         }
         else {
@@ -401,7 +401,7 @@ var STAGE = {
         }
     },
     //update the lifecycle of the stage (called by the engine when a dependency between the current stage and another elment that changed is detected)
-    update: function () {
+    update: function (engine) {
         var oldState = this.state;
         var newState = this.state;
         LogManager.logModelStage('update', this.name, this.state, this.compliance, this.status);
@@ -460,7 +460,7 @@ var STAGE = {
             Array.prototype.push.apply(dep, this._childs);
         if (this._array_dep.length > 0)
             Array.prototype.push.apply(dep, this._array_dep);
-        EventManager.emit(this.name, dep);
+        engine.EventAdministrator.emit(this.name, dep);
     }
 };
 
@@ -588,7 +588,7 @@ var PARSER = {
             }
 
             //define listener for STAGE event
-            EventManager.on('STAGE', stageId, function (stage_dep) {
+            engine.EventAdministrator.on('STAGE', stageId, function (stage_dep) {
                 //dependency array is passed as a stage parameter, when it fires the event
                 //in this way, it is possible to determine which elements (STAGE or DATA) munst be updated 
                 //TODO: review when update() is called (first DATA then STAGE?)
@@ -596,7 +596,7 @@ var PARSER = {
                     for (var k = 0; k < stage_dep.length; k++) {
                         if (engine.Data_array[stage_dep[k]] != undefined) {
                             //update DATA elements
-                            engine.Data_array[stage_dep[k]].update(false);
+                            engine.Data_array[stage_dep[k]].update(engine, false);
                         }
                     }
 
@@ -620,7 +620,7 @@ var PARSER = {
                         var subStageId = subStage['$'].id;
                         engine.Stage_array[stageId]._childs.push(subStageId);
                         //invoke recursive function to create STAGE instance for child stage
-                        PARSER.stageParsingRecursive(subStage, rank + 1, stageId);
+                        PARSER.stageParsingRecursive(engine, subStage, rank + 1, stageId);
                     }
                 }
             }
@@ -634,14 +634,14 @@ var PARSER = {
         engine.Event_array[evento['$'].id] = Object.create(EVENTO);
         engine.Event_array[evento['$'].id].init(evento['$'].name);
         //define listener for that event
-        EventManager.on('EVENTO', evento['$'].id, function (event_dep) {
+        engine.EventAdministrator.on('EVENTO', evento['$'].id, function (event_dep) {
             //when an event is fired, the array with all elements that depend on that event are passed (e.g., PAC isEventOccurring)
             //the listener will then call the update() method on the DATA instance
             if (event_dep != undefined) {
                 for (var k = 0; k < event_dep.length; k++) {
                     //check DATA dependencies and call update() method (e.g., updated DFG1 or M1)
                     if (engine.Data_array[event_dep[k]] != undefined) {
-                        engine.Data_array[event_dep[k]].update(false);
+                        engine.Data_array[event_dep[k]].update(engine, false);
                     }
                 }
             }
@@ -665,11 +665,11 @@ var PARSER = {
             var attributeUse = attributes[att]['$'].use;
             //TODO check for duplicate attributes
             //Info_array[infoId]._attributes.push(attributeName);
-            engine.Info_array[infoId]._attributes[attributeName] = Object.create(ATTRIBUTO);
+            engine.Info_array[infoId]._attributes[attributeName] = Object.create(ATTRIBUTE);
             engine.Info_array[infoId]._attributes[attributeName].init(attributeName, infoId, attributeType, attributeUse);
         }
         //define event listener
-        EventManager.on('INFO', infoId, function (id, attributes) {
+        engine.EventAdministrator.on('INFO', infoId, function (id, attributes) {
             //when an attribute in INFORMATION is changed, the INFORMATION instance id is passed
             //together with an array containing all changed elements
             //the listener then calls method changeAttributes(attributes)
@@ -686,22 +686,22 @@ var PARSER = {
         for (var key in engine.Data_array) {
             var data_item = engine.Data_array[key];
 
-            EventManager.on('DATA', data_item.name, function (dep) {
+            engine.EventAdministrator.on('DATA', data_item.name, function (dep) {
                 if (dep != undefined) {
                     for (var k = 0; k < dep.length; k++) {
                         if (engine.Stage_array[dep[k]] != undefined) { engine.Stage_array[dep[k]].update(); }
                     }
                     for (var k = 0; k < dep.length; k++) {
-                        if (engine.Data_array[dep[k]] != undefined && engine.Data_array[dep[k]].type == 'P') { engine.Data_array[dep[k]].update(false); }
+                        if (engine.Data_array[dep[k]] != undefined && engine.Data_array[dep[k]].type == 'P') { engine.Data_array[dep[k]].update(engine.false); }
                     }
                     for (var k = 0; k < dep.length; k++) {
-                        if (engine.Data_array[dep[k]] != undefined && engine.Data_array[dep[k]].type == 'F') { engine.Data_array[dep[k]].update(false); }
+                        if (engine.Data_array[dep[k]] != undefined && engine.Data_array[dep[k]].type == 'F') { engine.Data_array[dep[k]].update(engine, false); }
                     }
                     for (var k = 0; k < dep.length; k++) {
-                        if (engine.Data_array[dep[k]] != undefined && engine.Data_array[dep[k]].type == 'D') { engine.Data_array[dep[k]].update(false); }
+                        if (engine.Data_array[dep[k]] != undefined && engine.Data_array[dep[k]].type == 'D') { engine.Data_array[dep[k]].update(engine, false); }
                     }
                     for (var k = 0; k < dep.length; k++) {
-                        if (engine.Data_array[dep[k]] != undefined && engine.Data_array[dep[k]].type == 'M') { engine.Data_array[dep[k]].update(false); }
+                        if (engine.Data_array[dep[k]] != undefined && engine.Data_array[dep[k]].type == 'M') { engine.Data_array[dep[k]].update(engine, false); }
                     }
                 }
             });
@@ -784,6 +784,9 @@ function Engine(id) {
         Event_array: {},    //events
         Dependency_Array: {},  //dependencies
 
+        //EventManager Instance
+        EventAdministrator: EventManager.EventManager(id),
+
         //Initialize E-GSM engine
         initModel: function (processModel, infoModel) {
             //reset arrays
@@ -794,7 +797,7 @@ function Engine(id) {
             this.Event_array = {};
 
             //reset event manager
-            EventManager.reset();
+            this.EventAdministrator.reset();
 
             //parse XML, section 'ca:EventModel'
             var events = processModel['ca:CompositeApplicationType']['ca:EventModel'][0]['ca:Event'];
@@ -805,7 +808,7 @@ function Engine(id) {
             //parse XML, section 'ca:Stage'
             var stages = processModel['ca:CompositeApplicationType']['ca:Component'][0]['ca:GuardedStageModel'][0]['ca:Stage'];
             for (var key in stages) {
-                PARSER.stageParsingRecursive(stages[key], 0, '');
+                PARSER.stageParsingRecursive(this, stages[key], 0, '');
             }
 
             //configure listener for DATA events
@@ -838,7 +841,7 @@ function Engine(id) {
 
             //initialize process by evaluating all sentries for the first time
             for (key in this.Data_array) {
-                this.Data_array[key].update(false);
+                this.Data_array[key].update(this, false);
             }
 
             //uncomment to enable configuration of communication manager
@@ -962,7 +965,7 @@ function Engine(id) {
         // GSM.stageActivatedOnEvent
         // GSM.stageClosedOnEvent
 
-        notifyEngine(topic, message, hostname, port) {
+        notifyEngine(name, data) {
             console.log("[" + id + "] Message received: " + topic + " -> " + message);
         },
 
@@ -996,7 +999,7 @@ function Engine(id) {
             this.Info_array = {};
             this.Event_array = {};
             //reset event manager
-            EventManager.reset();
+            this.EventAdministrator.reset();
         },
         getStage: function (id) {
             return this.Stage_array[id];
@@ -1097,12 +1100,12 @@ function Engine(id) {
                     attrs[0] = new Object();
                     attrs[0].name = 'status';
                     attrs[0].value = value;
-                    this.Info_array[name].changeAttributes(attrs);
+                    this.Info_array[name].changeAttributes(this, attrs);
                 }
                 else {
-                    this.Info_array[name].changeAttributes(attrs);
+                    this.Info_array[name].changeAttributes(this, attrs);
                 }
-                saveState();
+                this.saveState();
             }
         },
         loadStaticState: function (path) {
@@ -1152,8 +1155,8 @@ module.exports = {
         return ENGINES.length;
     },
 
-    notifyEngine: function (engineid, topic, message, hostname, port) {
-        ENGINES.get(engineid).notifyEngine(topic, message, hostname, port)
+    notifyEngine: function (engineid, name, data) {
+        ENGINES.get(engineid).updateInfoModel(name, data)
     }
 
 }
