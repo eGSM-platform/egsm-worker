@@ -1145,10 +1145,22 @@ var mqttclient = mqtt.connect(this.opts)
 mqttclient.publish('topic1', 'messagesssss')
 
 module.exports = {
-    createNewEngine: function (engineid, informalModel, processModel) {
+    createNewEngine: async function (engineid, informalModel, processModel) {
+        if(ENGINES.has(engineid)){
+            return "already_exists"
+        }
         ENGINES.set(engineid, new Engine(engineid))
         console.log("New Engine created")
         ENGINES.get(engineid).start(informalModel, processModel)
+        return "created"
+    },
+
+    removeEngine(engineid){
+        if(!ENGINES.has(engineid)){
+            return "not_defined"
+        }
+        ENGINES.delete(engineid)
+        return 'removed'
     },
 
     getEngineNumber: function () {

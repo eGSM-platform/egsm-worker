@@ -1,22 +1,20 @@
 const multer = require('multer'); //For receiving files through HTTP POST
 var Client = require('node-rest-client').Client;
-var client = new Client();
-const fork = require('child_process').fork;
 var express = require('express');
-const { request } = require("http");
 var app = express();
-const { type } = require('os');
 
 var aux = require("../modules/auxiliary/auxiliary");
 var event_router = require('../modules/eventrouter/mqttconnector')
 var engine = require('../modules/egsmengine/egsmengine')
-var LOG = require('../modules/auxiliary/LogManager')
+var LOG = require('../modules/auxiliary/LogManager');
+const egsmengine = require('../modules/egsmengine/egsmengine');
 
 app.use(express.static(__dirname));
 
 module.id = "MAIN"
 LOG.logWorker('DEBUG', 'Worker started', module.id)
 
+var client = new Client();
 var SUPERVISOR = "localhost"
 var SUPERVISOR_PORT = 8085
 
@@ -25,6 +23,8 @@ var LOCAL_HTTP_PORT = 8086
 var MAX_ENGINES = 10
 
 var SUPERVISOR_CONNECTION = false
+
+//TODO: Add a websocket-based connection watchdog between worker and supervisor
 
 function getCredentials(options) {
     var args = {
@@ -77,13 +77,6 @@ function deregisterFromSupervisor(options) {
             resolve(true);
         });
     });
-}
-
-
-async function createNewEngine(engine_params, informalModel, processModel, eventRouterConfig) {
-    LOG.logWorker('DEBUG', 'Creating new engine instance: ' + engine_params.engine_id, module.id)
-    engine.createNewEngine(engine_params.engine_id, informalModel.buffer.toString(), processModel.buffer.toString());
-    return true
 }
 
 //Setting up storage for file posting
@@ -163,22 +156,46 @@ app.post("/engine/new", upload.any(), function (req, res, next) {
     }
 
     //Everything is provided, creating new engine
+    //Check if the broker connection exists and create it if not
+    var result = event_router.createConnection(mqtt_broker, mqtt_port, mqtt_user, mqtt_password, 'ntstmqtt_' + Math.random().toString(16).substr(2, 8));
+    if (!result) {
+        LOG.logWorker('DEBUG', 'Error while creating connection', module.id)
+        return res.status(500).send({ error: "Error while creating connection" })
+    }
+    if (result == 'created') {
+        LOG.logWorker('DEBUG', 'New broker connection created for the new engine', module.id)
+    }
+    else if (result == 'connection_exists') {
+        LOG.logWorker('DEBUG', 'New Broker connection was not needed, since it was already defined', module.id)
+    }
+
+    //Set up Default Broker for the engine
+    event_router.setDefaultBroker(engine_id, mqtt_broker, mqtt_port)
+
+    //Creating new engine
     var engine_params = {
         engine_id, mqtt_broker, mqtt_port, mqtt_user, mqtt_password
     }
-    createNewEngine(engine_params, informalModel, processModel, eventRouterConfig).then(
+    engine.createNewEngine(engine_id, informalModel.buffer.toString(), processModel.buffer.toString()).then(
         function (value) {
-            if (value) {
+            if (value == 'created') {
                 LOG.logWorker('DEBUG', 'New engine created. Request status 200 sent', module.id)
                 res.status(200).send({
                     result: true,
                     message: "New instance created"
                 })
             }
-            else {
-                LOG.logWorker('DEBUG', 'Error while creating new engine. Request status 500 sent', module.id)
+            else if (value == 'already_exists') {
+                LOG.logWorker('WARNING', `Engine with id [${engine_id}] is already exists, could not created again. Request status 500 sent`, module.id)
                 res.status(500).send({
-                    error: "Error while creating engine"
+                    result: true,
+                    message: "Instance with this ID already exists"
+                })
+            }
+            else {
+                LOG.logWorker('WARNING', 'Unhandled error while creating new engine. Request status 500 sent', module.id)
+                res.status(500).send({
+                    error: "Unhandled error while creating engine"
                 })
             }
         }
@@ -195,31 +212,35 @@ app.post('/broker_connection/new', upload.any(), function (req, res) {
     }
 
     //Check if the necessary data fields are available
-    var mqtt_broker = req.body.mqtt_broker || 'undefined'
-    var mqtt_port = req.body.mqtt_port || 'undefined'
-    var mqtt_user = req.body.mqtt_user || 'undefined'
-    var mqtt_password = req.body.mqtt_password || 'undefined'
-    var mqtt_client_uuid = req.body.client_uuid || 'undefined'
+    var mqtt_broker = req.body.mqtt_broker
+    var mqtt_port = req.body.mqtt_port
+    var mqtt_user = req.body.mqtt_user
+    var mqtt_password = req.body.mqtt_password
+    var mqtt_client_uuid = req.body.client_uuid
 
     if (typeof mqtt_broker == 'undefined' || typeof mqtt_port == 'undefined' || typeof mqtt_user == 'undefined' ||
-        typeof mqtt_password == 'undefined') {
+        typeof mqtt_password == 'undefined' || typeof mqtt_client_uuid == 'undefined') {
         LOG.logWorker('DEBUG', 'Request cancelled. Argument(s) are missing', module.id)
         return res.status(500).send({ error: "Parameter(s) missing" })
     }
-    var result = event_router.createConnection(mqtt_password, mqtt_port, mqtt_user, mqtt_password, mqtt_client_uuid);
-    if (!result) {
-        LOG.logWorker('DEBUG', 'Error while creating connection', module.id)
-        return res.status(500).send({ error: "Error while creating connection" })
+    var result = event_router.createConnection(mqtt_broker, mqtt_port, mqtt_user, mqtt_password, mqtt_client_uuid);
+    if (result) {
+        if (result == 'created') {
+            LOG.logWorker('DEBUG', 'New broker connection created:' + mqtt_broker + ':' + mqtt_port, module.id)
+            return res.status(200).send("New broker connection established")
+        }
+        else if (result == 'connection_exists') {
+            LOG.logWorker('DEBUG', 'Broker connection already exists:' + mqtt_broker + ':' + mqtt_port, module.id)
+            return res.status(200).send("Connection_exists")
+        }
     }
-    LOG.logWorker('DEBUG', 'New broker connection created:' + mqtt_broker + ':' + mqtt_port, module.id)
-    return res.status(200).send("New broker connection established")
+    LOG.logWorker('DEBUG', 'Error while creating connection', module.id)
+    return res.status(500).send({ error: "Error while creating connection" })
 })
-
-//TODO Set default mqtt broker for process engine
 
 //Delete existing process
 app.delete("/engine/remove", function (req, res) {
-    LOG.logWorker('DEBUG', 'Delete engine requested', module.id)
+    LOG.logWorker('DEBUG', `Delete engine requested`, module.id)
 
     var engine_id = req.query.engine_id
     if (typeof engine_id == "undefined") {
@@ -228,8 +249,12 @@ app.delete("/engine/remove", function (req, res) {
             error: "No engine_id"
         })
     }
-    //TODO remove engine
-
+    var result = egsmengine.removeEngine(engine_id)
+    if(result == 'not_defined'){
+        return res.status(500).send({
+            error: "not_defined"
+        })
+    }
     res.status(200).send("ok")
 })
 
@@ -249,6 +274,13 @@ app.get('/status', function (req, res) {
     //TODO: implement
     res.status(200).send('Not implemented yet')
 })
+
+app.get('/api/updateInfoModel', function (req, res) {
+
+    engine.notifyEngine('Engine 1', req.query['name'], req.query['value'])
+    res.send('ok')
+    //res.json(GSMManager.updateInfoModel(req.query['name'], req.query['value']));
+});
 
 const rest_api = app.listen(LOCAL_HTTP_PORT, () => {
     LOG.logWorker(`DEBUG`, `Worker listening on port ${LOCAL_HTTP_PORT}`, module.id)

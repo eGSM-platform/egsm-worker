@@ -4,6 +4,9 @@
 var fs = require('fs');
 var util = require('util');
 
+const LOG_LEVELS = {'DEBUG': 1, 'WARNING': 2, 'ERORR': 3};
+var CONSOLE_LOG_LEVEL = LOG_LEVELS.DEBUG; //Console log from a defined level above
+
 // define output for log files
 // TODO: delete 'w' flags to prevent overwriting log files
 var prefisso = (new Date().toISOString().replace(/:/g,'')).replace(/\./g,'');
@@ -113,7 +116,9 @@ var logWorker = function(type, value, location)
 {
   location = location || ''
   worker_log.write(new Date().toISOString() + '; ' + util.format('[' + location + '] ' + type + ' - ' + value) + '\n');
-  console.log(util.format('[' + location + '] ' + type + ' - ' + value))
+  if(LOG_LEVELS[type] >= CONSOLE_LOG_LEVEL){
+    console.log(util.format('[' + location + '] ' + type + ' - ' + value))
+  }
 }
 
 // exposed functions

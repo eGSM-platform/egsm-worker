@@ -1,28 +1,32 @@
 var mqtt = require("mqtt")
+var LOG = require('../auxiliary/LogManager')
 
 var egsm = require('../egsmengine/egsmengine')
 var aux = require('../auxiliary/auxiliary')
 
+module.id = "MQTT"
+
 function MqttBroker(hostname, port, userName, userPassword, clientId) {
     return {
-        opts: { host: hostname, port: port, username: userName, password: userPassword, keepalive: 30, clientId: clientId },
+        opts: { host: hostname, port: port, username: userName, password: userPassword, keepalive: 30, clientId: clientId, protocolVersion: 5 },
         mqttclient: mqtt.connect(this.opts)
             .on('connect', function () {
-                console.log('MQTT client connected');
+                LOG.logWorker('DEBUG', `Connected to broker: ${hostname}:${port}`, module.id)
             })
             .on('disconnect', function () {
-                console.log('MQTT client disconnected');
+                LOG.logWorker('DEBUG', `Disconnected from broker: ${hostname}:${port}`, module.id)
             })
             .on('reconnect', function () {
-                console.log('MQTT client reconnected');
+                LOG.logWorker('DEBUG', `Reconnected to broker: ${hostname}:${port}`, module.id)
             })
             .on('error', function (error) {
-                console.log('MQTT client error' + error);
+                LOG.logWorker('DEBUG', `Broker error [${error}] at Broker: ${hostname}:${port}`, module.id)
             })
             .on('message', function (topic, message) {
-                console.log("Message received: " + topic + "||" + message)
+                LOG.logWorker('DEBUG', `New message: [${hostname}:${port}]::[${topic}]->[${message}]`, module.id)
                 var subscribers = getSubscribers(hostname, port, topic)
                 subscribers.forEach((item, index, arr) => {
+                    LOG.logWorker('DEBUG', `Subscriber [${item}] notified: [${topic}]->[${message}]`, module.id)
                     egsm.notifyEngine(item, topic, message, hostname, port)
                 })
             })
@@ -31,7 +35,7 @@ function MqttBroker(hostname, port, userName, userPassword, clientId) {
 
 let BROKERS = new Map(); // {IP, PORT} -> BROKER_DETAILS
 let SUBSCRIPTIONS = new Map(); //ENGINE_ID -> [{IP, PORT, TOPIC}]
-let ENGINES = new Map(); //ENGINE_ID -> BROKER_KEY 
+let ENGINES = new Map(); //ENGINE_ID -> DEFAULT_BROKER_KEY 
 
 function getSubscribers(hostname, port, topic) {
     var result = []
@@ -47,25 +51,33 @@ function getSubscribers(hostname, port, topic) {
 
 module.exports = {
     createConnection: function (hostname, port, username, userpassword, clientid) {
+        LOG.logWorker('DEBUG', `createConnection called: ${hostname}:${port}`, module.id)
         if (!BROKERS.has([hostname, port].join(":"))) {
-            BROKERS.set([hostname, port].join(":"), new MqttBroker(hostname, port, username, userpassword, clientid))
+            var newBroker = new MqttBroker(hostname, port, username, userpassword, clientid)
+            BROKERS.set([hostname, port].join(":"), newBroker)
+            LOG.logWorker('DEBUG', `Connection established: ${hostname}:${port}`, module.id)
+            return 'created'
         }
-        return true
+        LOG.logWorker('DEBUG', `Connection is already existing: ${hostname}:${port}`, module.id)
+        return 'connection_exists'
     },
 
     closeConnection: function (hostname, port) {
+        LOG.logWorker('DEBUG', `closeConnection called: ${hostname}:${port}`, module.id)
         if (BROKERS.has([hostname, port].join(":"))) {
             BROKERS.get([hostname, port].join(":")).mqttclient.end()
             BROKERS.delete([hostname, port].join(":"))
-            console.log('Connection closed: ' + hostname + ':' + port)
+            LOG.logWorker('DEBUG', `Connection closed: ${hostname}:${port}`, module.id)
         }
     },
 
     setDefaultBroker(engineid, hostname, port) {
+        LOG.logWorker('DEBUG', `setDefaultBroker called: ${engineid} -> ${hostname}:${port}`, module.id)
         ENGINES.set(engineid, { hostname, port })
     },
 
     subscribe: function (engineid, topic, hostname, port) {
+        
         if (!SUBSCRIPTIONS.has(engineid)) {
             SUBSCRIPTIONS.set(engineid, []);
         }
@@ -80,7 +92,7 @@ module.exports = {
         })
         if (!subscriptionExists) {
             SUBSCRIPTIONS.get(engineid).push({ hostname, port, topic })
-            BROKERS.get([hostname, port].join(":")).mqttclient.subscribe(topic);
+            BROKERS.get([hostname, port].join(":")).mqttclient.subscribe(topic, {nl: true});
         }
     },
 
