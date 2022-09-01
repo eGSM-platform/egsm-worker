@@ -24,6 +24,8 @@ var MAX_ENGINES = 10
 
 var SUPERVISOR_CONNECTION = false
 
+engine.definePublishFunction(event_router.test)
+
 //TODO: Add a websocket-based connection watchdog between worker and supervisor
 
 function getCredentials(options) {
@@ -173,9 +175,14 @@ app.post("/engine/new", upload.any(), function (req, res, next) {
     event_router.setDefaultBroker(engine_id, mqtt_broker, mqtt_port)
 
     //Creating new engine
-    var engine_params = {
+    /*var engine_params = {
         engine_id, mqtt_broker, mqtt_port, mqtt_user, mqtt_password
-    }
+    }*/
+
+    //Adding new engine to the Event Router
+    //Adding Engine to the Event Router
+    event_router.initConnections(engine_id, eventRouterConfig.buffer.toString())
+    //Creating new engine
     engine.createNewEngine(engine_id, informalModel.buffer.toString(), processModel.buffer.toString()).then(
         function (value) {
             if (value == 'created') {
@@ -238,7 +245,7 @@ app.post('/broker_connection/new', upload.any(), function (req, res) {
     return res.status(500).send({ error: "Error while creating connection" })
 })
 
-//Delete existing process
+//Delete existing engine
 app.delete("/engine/remove", function (req, res) {
     LOG.logWorker('DEBUG', `Delete engine requested`, module.id)
 
@@ -250,13 +257,33 @@ app.delete("/engine/remove", function (req, res) {
         })
     }
     var result = egsmengine.removeEngine(engine_id)
-    if(result == 'not_defined'){
+    if (result == 'not_defined') {
         return res.status(500).send({
             error: "not_defined"
         })
     }
     res.status(200).send("ok")
 })
+
+//Reset an already existing engine
+app.get('/engine/reset', function (req, res) {
+    LOG.logWorker('DEBUG', `Reset engine requested`, module.id)
+
+    var engine_id = req.query.engine_id
+    if (typeof engine_id == "undefined") {
+        LOG.logWorker('DEBUG', 'Request canceled. engine_id is missing', module.id)
+        return res.status(500).send({
+            error: "No engine_id"
+        })
+    }
+    var result = egsmengine.resetEngine(engine_id)
+    if (result == 'not_defined') {
+        return res.status(500).send({
+            error: "not_defined"
+        })
+    }
+    res.status(200).send("ok")
+});
 
 app.get('/engine/status', function (req, res) {
     var engine_id = req.query.engine_id
@@ -270,16 +297,50 @@ app.get('/engine/status', function (req, res) {
     res.status(200).send("ok")
 })
 
-app.get('/status', function (req, res) {
-    //TODO: implement
-    res.status(200).send('Not implemented yet')
-})
+app.get('/engine/config_stages', function (req, res) {
+    var engine_id = req.query.engine_id
+    if (typeof engine_id == "undefined") {
+        return res.status(500).send({
+            error: "No engine engine id provided"
+        })
+    }
+    res.status(200).json(egsmengine.getCompleteDiagram(engine_id));
+});
 
-app.get('/api/updateInfoModel', function (req, res) {
+app.get('/engine/config_stages_diagram', function (req, res) {
+    var engine_id = req.query.engine_id
+    if (typeof engine_id == "undefined") {
+        return res.status(500).send({
+            error: "No engine engine id provided"
+        })
+    }
+    res.status(200).json(egsmengine.getCompleteNodeDiagram(engine_id));
+});
 
-    engine.notifyEngine('Engine 1', req.query['name'], req.query['value'])
-    res.send('ok')
-    //res.json(GSMManager.updateInfoModel(req.query['name'], req.query['value']));
+//TODO
+/*app.get('/debugLog', function(req, res) {
+    res.json(LogManager.debugLog);
+});*/
+
+app.get('/engine/infomodel', function (req, res) {
+    var engine_id = req.query.engine_id
+    if (typeof engine_id == "undefined") {
+        return res.status(500).send({
+            error: "No engine engine id provided"
+        })
+    }
+    res.status(200).json(egsmengine.getInfoModel(engine_id));
+});
+
+//TODO: This route may not be necessary since Event Router has direct access to the engines
+app.get('/engine/updateInfoModel', function (req, res) {
+    var engine_id = req.query.engine_id
+    if (typeof engine_id == "undefined") {
+        return res.status(500).send({
+            error: "No engine engine id provided"
+        })
+    }
+    res.status(200).json(egsmengine.updateInfoModel(engine_id, req.query['name'], req.query['value']));
 });
 
 const rest_api = app.listen(LOCAL_HTTP_PORT, () => {

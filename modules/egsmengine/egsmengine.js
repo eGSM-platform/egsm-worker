@@ -969,14 +969,53 @@ function Engine(id) {
             console.log("[" + id + "] Message received: " + topic + " -> " + message);
         },
 
+        //UI
+        //recursive method to build JSON file for UI (convert flat array into hierarchical structure)
+        completeDiagram: function (json, stage, rank) {
+            if (stage) {
+                //define JSON fields
+                json.name = this.Stage_array[stage.name].name;
+                json.state = this.Stage_array[stage.name].state;
+                json.status = this.Stage_array[stage.name].status;
+                json.compliance = this.Stage_array[stage.name].compliance;
+                json.array_dep = this.Stage_array[stage.name]._array_dep;
+                //populate data flow guards
+                json.dataGuards = [];
+                for (var key2 in stage._dataGuards) {
+                    json.dataGuards.push(this.Data_array[stage._dataGuards[key2]]);
+                }
+                //populate process flow guards
+                json.processGuards = [];
+                for (var key2 in stage._processGuards) {
+                    json.processGuards.push(this.Data_array[stage._processGuards[key2]]);
+                }
+                //populate milestones
+                json.milestones = [];
+                for (var key2 in stage._milestones) {
+                    json.milestones.push(this.Data_array[stage._milestones[key2]]);
+                }
+                //populate fault loggers
+                json.faults = [];
+                for (var key2 in stage._faults) {
+                    json.faults.push(this.Data_array[stage._faults[key2]]);
+                }
+                //add child stages
+                json.sub_stages = [];
+                for (var key in stage._childs) {
+                    if (typeof this.Stage_array[stage._childs[key]] == "object") {
+                        //invoke recursive function
+                        json.sub_stages.push(this.completeDiagram({}, this.Stage_array[stage._childs[key]], this.Stage_array[stage._childs[key]].rank));
+                    }
+                }
+                return json;
+            }
+            return json;
+        },
+
 
         //EXPOSED FUNCTIONS
         // engine initialization
         start: function (xsdInfoModel, xmlProcessModel) {
-            // load process model and information model
-            //var xmlProcessModel = fs.readFileSync(processModelPath, 'utf8');
-            //var xsdInfoModel = fs.readFileSync(infoModelPath, 'utf8');
-
             // parse XML and XSD files, then start engine
             var parseString = xml2js.parseString;
             var that = this
@@ -1001,25 +1040,13 @@ function Engine(id) {
             //reset event manager
             this.EventAdministrator.reset();
         },
-        getStage: function (id) {
-            return this.Stage_array[id];
-        },
-        getData: function () {
-            return this.Data_array[id];
-        },
-        getAllStage: function () {
-            return this.Stage_array;
-        },
-        getAllData: function () {
-            return this.Data_array;
-        },
         // create JSON to represent model in UI
         getCompleteDiagram: function () {
             //build json model for GUI
             var json_model = [];
             for (var key in this.Stage_array) {
                 if (this.Stage_array[key].rank == 0)
-                    json_model.push(UI.completeDiagram({}, this.Stage_array[key], 0));
+                    json_model.push(this.completeDiagram({}, this.Stage_array[key], 0));
             }
             return json_model;
         },
@@ -1135,32 +1162,69 @@ function Engine(id) {
 }
 
 var ENGINES = new Map()
-ENGINES.set("engine1", new Engine(1))
-ENGINES.set("engine2", new Engine(2))
-
-//console.log(ENGINES.get('engine1').isMilestoneAchieved('ddd'))
-
-var opts = { host: 'localhost', port: 1883, username: 'admin', password: 'password', keepalive: 30, clientId: 'client1' }
-var mqttclient = mqtt.connect(this.opts)
-mqttclient.publish('topic1', 'messagesssss')
+var SUBSCRIBE;
 
 module.exports = {
+    definePublishFunction(publishfunction){
+        SUBSCRIBE = publishfunction
+    },
+
     createNewEngine: async function (engineid, informalModel, processModel) {
-        if(ENGINES.has(engineid)){
+        if (ENGINES.has(engineid)) {
             return "already_exists"
         }
         ENGINES.set(engineid, new Engine(engineid))
         console.log("New Engine created")
+        //Start Engine
         ENGINES.get(engineid).start(informalModel, processModel)
         return "created"
     },
 
-    removeEngine(engineid){
-        if(!ENGINES.has(engineid)){
+    removeEngine(engineid) {
+        if (!ENGINES.has(engineid)) {
             return "not_defined"
         }
         ENGINES.delete(engineid)
         return 'removed'
+    },
+
+    resetEngine(engineid) {
+        if (!ENGINES.has(engineid)) {
+            return "not_defined"
+        }
+        ENGINES.get(engineid).reset()
+        return 'resetted'
+    },
+
+    // create JSON to represent model in UI
+    getCompleteDiagram: function (engineid) {
+        if (!ENGINES.has(engineid)) {
+            return "not_defined"
+        }
+        //build json model for GUI
+        return ENGINES.get(engineid).getCompleteDiagram()
+    },
+
+    getCompleteNodeDiagram(engineid) {
+        if (!ENGINES.has(engineid)) {
+            return "not_defined"
+        }
+        //build json model for GUI
+        return ENGINES.get(engineid).getCompleteNodeDiagram()
+    },
+
+    getInfoModel(engineid) {
+        if (!ENGINES.has(engineid)) {
+            return "not_defined"
+        }
+        return ENGINES.get(engineid).getInfoModel()
+    },
+
+    updateInfoModel(engineid, name, value) {
+        if (!ENGINES.has(engineid)) {
+            return "not_defined"
+        }
+        return ENGINES.get(engineid).updateInfoModel(name, value)
     },
 
     getEngineNumber: function () {
