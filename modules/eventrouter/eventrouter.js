@@ -124,16 +124,17 @@ function onMessageReceived(hostname, port, topic, message) {
         //Check if the event is from Artifact and forward it to the engine
         else if (elements.length == 3 && elements[2] == 'status') {
             //Forward message to the engine
-            ENGINES.get(subscribers[engine]).onMessageReceived(hostname, port, topic,
-                { parameters: { name: (JSON.parse(message.toString())).event.payloadData.eventid, value: '' } })
+
+            ENGINES.get(subscribers[engine]).onMessageReceived(subscribers[engine], JSON.parse(message.toString()).event.payloadData.eventid, '')
         }
     }
 }
 
 mqtt.init(onMessageReceived)
+
 module.exports = {
     //Set up default broker and onMessageReceived function for a specified engine
-    setEngineDefaults(engineid, hostname, port, onMessageReceived) {
+    setEngineDefaults: function (engineid, hostname, port, onMessageReceived) {
         LOG.logWorker('DEBUG', `setDefaultBroker called: ${engineid} -> ${hostname}:${port}`, module.id)
         ENGINES.set(engineid, { hostname: hostname, port: port, onMessageReceived: onMessageReceived })
     },
@@ -166,7 +167,7 @@ module.exports = {
                 }
                 ARTIFACTS.get(engineid).push({
                     name: ra[artifact]['$'].name, bindingEvents: br,
-                    unbindingEvents: ur, 
+                    unbindingEvents: ur,
                     host: ra[artifact]['$'].broker_host || ENGINES.get(engineid).hostname,
                     port: ra[artifact]['$'].port || ENGINES.get(engineid).port,
                     id: ''
@@ -198,11 +199,38 @@ module.exports = {
     },
 
     processPublish: function (engineid, data) {
-
+        var topic = engineid + '/status'
+        if (SUBSCRIPTIONS.has(topic)) {
+            for (var item in SUBSCRIPTIONS.get(topic)) {
+                var engineidToNotify = SUBSCRIPTIONS.get(topic)[item]
+                ENGINES.get(engineidToNotify).onMessageReceived(ENGINES.get(engineid).hostname, ENGINES.get(engineid).port, topic,
+                    { parameters: { name: (JSON.parse(data.toString())).event.payloadData.eventid, value: '' } })
+            }
+        }
+        mqtt.publishTopic(ENGINES.get(engineid).hostname, ENGINES.get(engineid).port, topic, data)
     },
 
     onEngineStop: function (engineid) {
-
+        if(ENGINES.has(engineid)){
+            var topics = []
+            SUBSCRIPTIONS.forEach(function (value, key) {
+                for (i in value) {
+                    if (value[i] == engineid) {
+                        topics.push(key)
+                        break
+                    }
+                }
+            })
+            for (i in topics) {
+                var elements = topics[i].split(':')
+                deleteSubscription(engineid, elements[2], elements[0], elements[1])
+            }
+            ENGINES.delete(engineid)
+            return 'ok'
+        }
+        else{
+            return 'not_defined'
+        }
     }
 };
 

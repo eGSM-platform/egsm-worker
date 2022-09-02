@@ -1,4 +1,3 @@
-var mqtt = require("mqtt")
 var xml2js = require('xml2js');
 var EventManager = require('../auxiliary/EventManager');
 var LogManager = require("../auxiliary/LogManager")
@@ -1165,8 +1164,13 @@ var ENGINES = new Map()
 var SUBSCRIBE;
 
 module.exports = {
-    definePublishFunction(publishfunction){
+    setEventRouter: function (publishfunction) {
         SUBSCRIBE = publishfunction
+    },
+
+    //returns true if an engine with the provided id exists
+    exists: function (engineid) {
+        return ENGINES.has(engineid)
     },
 
     createNewEngine: async function (engineid, informalModel, processModel) {
@@ -1180,7 +1184,7 @@ module.exports = {
         return "created"
     },
 
-    removeEngine(engineid) {
+    removeEngine: function (engineid) {
         if (!ENGINES.has(engineid)) {
             return "not_defined"
         }
@@ -1188,7 +1192,7 @@ module.exports = {
         return 'removed'
     },
 
-    resetEngine(engineid) {
+    resetEngine: function (engineid) {
         if (!ENGINES.has(engineid)) {
             return "not_defined"
         }
@@ -1205,7 +1209,7 @@ module.exports = {
         return ENGINES.get(engineid).getCompleteDiagram()
     },
 
-    getCompleteNodeDiagram(engineid) {
+    getCompleteNodeDiagram: function (engineid) {
         if (!ENGINES.has(engineid)) {
             return "not_defined"
         }
@@ -1213,14 +1217,14 @@ module.exports = {
         return ENGINES.get(engineid).getCompleteNodeDiagram()
     },
 
-    getInfoModel(engineid) {
+    getInfoModel: function (engineid) {
         if (!ENGINES.has(engineid)) {
             return "not_defined"
         }
         return ENGINES.get(engineid).getInfoModel()
     },
 
-    updateInfoModel(engineid, name, value) {
+    updateInfoModel: function (engineid, name, value) {
         if (!ENGINES.has(engineid)) {
             return "not_defined"
         }

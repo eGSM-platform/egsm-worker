@@ -4,8 +4,8 @@ var express = require('express');
 var app = express();
 
 var aux = require("../modules/auxiliary/auxiliary");
-var event_router = require('../modules/eventrouter/mqttconnector')
-var engine = require('../modules/egsmengine/egsmengine')
+var event_router = require('../modules/eventrouter/eventrouter')
+var mqtt = require('../modules/eventrouter/mqttconnector')
 var LOG = require('../modules/auxiliary/LogManager');
 const egsmengine = require('../modules/egsmengine/egsmengine');
 
@@ -24,7 +24,7 @@ var MAX_ENGINES = 10
 
 var SUPERVISOR_CONNECTION = false
 
-engine.definePublishFunction(event_router.test)
+egsmengine.setEventRouter(event_router.processPublish)
 
 //TODO: Add a websocket-based connection watchdog between worker and supervisor
 
@@ -117,7 +117,7 @@ app.post("/engine/new", upload.any(), function (req, res, next) {
     }
 
     //Check if worker can serve one more engine
-    if (engine.getEngineNumber() >= MAX_ENGINES) {
+    if (egsmengine.getEngineNumber() >= MAX_ENGINES) {
         LOG.logWorker('DEBUG', 'Request cancelled. Out of free Engine slots', module.id)
         res.status(500).send({
             "error": "No free eGSM Engine slot left on the worker"
@@ -158,8 +158,17 @@ app.post("/engine/new", upload.any(), function (req, res, next) {
     }
 
     //Everything is provided, creating new engine
-    //Check if the broker connection exists and create it if not
-    var result = event_router.createConnection(mqtt_broker, mqtt_port, mqtt_user, mqtt_password, 'ntstmqtt_' + Math.random().toString(16).substr(2, 8));
+
+    //Check if there is any engine with the same engine id
+    if (egsmengine.exists(engine_id)) {
+        LOG.logWorker('WARNING', `Engine with id [${engine_id}] is already exists, could not created again. Request status 500 sent`, module.id)
+        return res.status(500).send({
+            result: false,
+            message: "Instance with this ID already exists"
+        })
+    }
+    //Check if the broker connection exists and create it is if not
+    var result = mqtt.createConnection(mqtt_broker, mqtt_port, mqtt_user, mqtt_password, 'ntstmqtt_' + Math.random().toString(16).substr(2, 8));
     if (!result) {
         LOG.logWorker('DEBUG', 'Error while creating connection', module.id)
         return res.status(500).send({ error: "Error while creating connection" })
@@ -172,41 +181,36 @@ app.post("/engine/new", upload.any(), function (req, res, next) {
     }
 
     //Set up Default Broker for the engine
-    event_router.setDefaultBroker(engine_id, mqtt_broker, mqtt_port)
+    event_router.setEngineDefaults(engine_id, mqtt_broker, mqtt_port, egsmengine.notifyEngine)
 
     //Creating new engine
-    /*var engine_params = {
-        engine_id, mqtt_broker, mqtt_port, mqtt_user, mqtt_password
-    }*/
-
-    //Adding new engine to the Event Router
-    //Adding Engine to the Event Router
-    event_router.initConnections(engine_id, eventRouterConfig.buffer.toString())
-    //Creating new engine
-    engine.createNewEngine(engine_id, informalModel.buffer.toString(), processModel.buffer.toString()).then(
+    egsmengine.createNewEngine(engine_id, informalModel.buffer.toString(), processModel.buffer.toString()).then(
         function (value) {
             if (value == 'created') {
                 LOG.logWorker('DEBUG', 'New engine created. Request status 200 sent', module.id)
-                res.status(200).send({
+                return res.status(200).send({
                     result: true,
                     message: "New instance created"
                 })
             }
             else if (value == 'already_exists') {
                 LOG.logWorker('WARNING', `Engine with id [${engine_id}] is already exists, could not created again. Request status 500 sent`, module.id)
-                res.status(500).send({
+                return res.status(500).send({
                     result: true,
                     message: "Instance with this ID already exists"
                 })
             }
             else {
                 LOG.logWorker('WARNING', 'Unhandled error while creating new engine. Request status 500 sent', module.id)
-                res.status(500).send({
+                return res.status(500).send({
                     error: "Unhandled error while creating engine"
                 })
             }
         }
     )
+
+    //Adding Engine to the Event Router
+    event_router.initConnections(engine_id, eventRouterConfig.buffer.toString())
 })
 
 //New MQTT broker connection
@@ -230,7 +234,7 @@ app.post('/broker_connection/new', upload.any(), function (req, res) {
         LOG.logWorker('DEBUG', 'Request cancelled. Argument(s) are missing', module.id)
         return res.status(500).send({ error: "Parameter(s) missing" })
     }
-    var result = event_router.createConnection(mqtt_broker, mqtt_port, mqtt_user, mqtt_password, mqtt_client_uuid);
+    var result = mqtt.createConnection(mqtt_broker, mqtt_port, mqtt_user, mqtt_password, mqtt_client_uuid);
     if (result) {
         if (result == 'created') {
             LOG.logWorker('DEBUG', 'New broker connection created:' + mqtt_broker + ':' + mqtt_port, module.id)
@@ -256,6 +260,9 @@ app.delete("/engine/remove", function (req, res) {
             error: "No engine_id"
         })
     }
+    //Remove engine from EventRouter
+    event_router.onEngineStop(engine_id)
+    //Remove engine from Engine array
     var result = egsmengine.removeEngine(engine_id)
     if (result == 'not_defined') {
         return res.status(500).send({
@@ -335,9 +342,11 @@ app.get('/engine/infomodel', function (req, res) {
 //TODO: This route may not be necessary since Event Router has direct access to the engines
 app.get('/engine/updateInfoModel', function (req, res) {
     var engine_id = req.query.engine_id
-    if (typeof engine_id == "undefined") {
+    var name = req.query['name']
+    var value = req.query['value']
+    if (typeof engine_id == "undefined" || typeof name == "undefined" || typeof value == "undefined") {
         return res.status(500).send({
-            error: "No engine engine id provided"
+            error: "No engine id/model name / model value provided"
         })
     }
     res.status(200).json(egsmengine.updateInfoModel(engine_id, req.query['name'], req.query['value']));
