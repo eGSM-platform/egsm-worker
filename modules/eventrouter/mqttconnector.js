@@ -32,6 +32,7 @@ var ON_RECEIVED = undefined; //Function reference called when a new message avai
 module.exports = {
 
     init: function (onReceivedFunction) {
+        LOG.logWorker('DEBUG', `init called`, module.id)
         ON_RECEIVED = onReceivedFunction
     },
 
@@ -58,9 +59,6 @@ module.exports = {
 
     publishTopic: function (hostname, port, topic, message) {
         LOG.logWorker('DEBUG', `Publishing to: [${hostname}]:[${port}] -> [${topic}] :: [${message}]`, module.id)
-        if (!ON_RECEIVED) {
-            LOG.logWorker('WARNING', `ON_RECEIVED function not defined yet, use init() function!`, module.id)
-        }
         if (!BROKERS.has([hostname, port].join(":"))) {
             LOG.logWorker('WARNING', `Specified Broker is not defined: [${hostname}]:[${port}]`, module.id)
             return
@@ -70,6 +68,9 @@ module.exports = {
 
     subscribeTopic: function (hostname, port, topic) {
         LOG.logWorker('DEBUG', `Subscribing to: [${hostname}]:[${port}] -> [${topic}]`, module.id)
+        if (!ON_RECEIVED) {
+            LOG.logWorker('WARNING', `ON_RECEIVED function not defined yet, use init() function!`, module.id)
+        }
         if (!BROKERS.has([hostname, port].join(":"))) {
             LOG.logWorker('WARNING', `Specified Broker is not defined: [${hostname}]:[${port}]`, module.id)
             return
