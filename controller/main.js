@@ -1,7 +1,9 @@
 const multer = require('multer'); //For receiving files through HTTP POST
-var Client = require('node-rest-client').Client;
 var express = require('express');
+var bodyParser = require('body-parser')
+var jsonParser = bodyParser.json()
 var app = express();
+const axios = require('axios').default;
 
 var aux = require("../modules/auxiliary/auxiliary");
 var event_router = require('../modules/eventrouter/eventrouter')
@@ -14,7 +16,6 @@ app.use(express.static(__dirname));
 module.id = "MAIN"
 LOG.logWorker('DEBUG', 'Worker started', module.id)
 
-var client = new Client();
 var SUPERVISOR = "localhost"
 var SUPERVISOR_PORT = 8085
 
@@ -29,55 +30,59 @@ egsmengine.setEventRouter(event_router.processPublish)
 //TODO: Add a websocket-based connection watchdog between worker and supervisor
 
 function getCredentials(options) {
-    var args = {
+    const config = {
+        method: 'post',
+        url: "http://" + SUPERVISOR + ":" + SUPERVISOR_PORT + "/worker/register",
+        headers: { "Content-Type": "application/json" },
         data: {
             max_engines: MAX_ENGINES,
             rest_api_port: LOCAL_HTTP_PORT
         },
-        headers: { "Content-Type": "application/json" }
-    };
+    }
     return new Promise((resolve, reject) => {
-        var req = client.post("http://" + SUPERVISOR + ":" + SUPERVISOR_PORT + "/worker/register", args, function (data, response) {
-            // parsed response body as js object
-            WORKER_ID = data.worker_id
+        axios(config).then(function (response) {
+            WORKER_ID = response.data.worker_id
             if (typeof WORKER_ID == 'undefined') {
                 LOG.logWorker('WARNING', 'Supervisor did not provided WORKER_ID', module.id)
                 resolve(false);
             }
-            if (response.statusCode != 200) {
-                LOG.logWorker('WARNING', 'Server response code: ' + response.statusCode, module.id)
+            if (response.status != 200) {
+                LOG.logWorker('WARNING', 'Server response code: ' + response.status, module.id)
                 resolve(false);
             }
             resolve(true);
-        });
-        req.on('error', function (req) {
-            LOG.logWorker('WARNING', 'Could not retrieve credentials from Supervisor', module.id)
-            resolve(false);
-        });
+        })
+            .catch(function (error) {
+                LOG.logWorker('WARNING', 'Could not retrieve credentials from Supervisor', module.id)
+                resolve(false);
+            })
     });
 }
 
 function deregisterFromSupervisor(options) {
-    var args = {
+    const config = {
+        method: 'post',
+        url: `http://${SUPERVISOR}:${SUPERVISOR_PORT}/worker/deregister`,
+        headers: { "Content-Type": "application/json" },
         data: {
             worker_id: WORKER_ID
         },
-        headers: { "Content-Type": "application/json" }
-    };
+    }
     return new Promise((resolve, reject) => {
-        var req = client.post(`http://${SUPERVISOR}:${SUPERVISOR_PORT}/worker/deregister`, args, function (data, response) {
-            if (response.statusCode != 200) {
-                LOG.logWorker('WARNING', 'Deregistering may not be successfull. Server response code: ' + response.statusCode)
+        axios(config).then(function (response) {
+            if (response.status != 200) {
+                LOG.logWorker('WARNING', 'Deregistering may not be successfull. Server response code: ' + response.status, module.id)
+                resolve(false);
             }
             else {
                 LOG.logWorker('DEBUG', 'Worker deregistered from Supervisor', module.id)
             }
             resolve(true);
-        });
-        req.on('error', function (req) {
-            LOG.logWorker('WARNING', 'Deregistering may not be successfull', module.id)
-            resolve(true);
-        });
+        })
+            .catch(function (error) {
+                LOG.logWorker('WARNING', 'Deregistering may not be successfull', module.id)
+                resolve(false);
+            })
     });
 }
 
@@ -108,7 +113,7 @@ const upload = multer({ storage: storage });
 
 //ROUTES
 //Create New Process
-app.post("/engine/new", upload.any(), function (req, res, next) {
+app.post("/engine/new", jsonParser, upload.any(), function (req, res, next) {
     LOG.logWorker('DEBUG', 'New process creation requested', module.id)
 
     if (typeof req.body == 'undefined') {
@@ -146,7 +151,7 @@ app.post("/engine/new", upload.any(), function (req, res, next) {
             else if (req.files[i].fieldname == "process_model") {
                 var processModel = req.files[i];
             }
-            else if (req.files[i].fieldname == "eventRouterConfig") {
+            else if (req.files[i].fieldname == "event_router_config") {
                 var eventRouterConfig = req.files[i];
             }
 
@@ -214,7 +219,7 @@ app.post("/engine/new", upload.any(), function (req, res, next) {
 })
 
 //New MQTT broker connection
-app.post('/broker_connection/new', upload.any(), function (req, res) {
+app.post('/broker_connection/new',jsonParser, upload.any(), function (req, res) {
     LOG.logWorker('DEBUG', 'New Broker Connection requested', module.id)
     //Check if the necessary data fields are available
     if (typeof req.body == 'undefined') {
