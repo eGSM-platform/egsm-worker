@@ -1,0 +1,7 @@
+<button ng-click="updateDebugLog()">Refresh</button>
+<table>
+  <tr ng-repeat="l in log | orderBy : 'timestamp' : true">
+    <td>{{ l.timestamp }}</td>
+    <td>{{ l.message }}</td>
+  </tr>
+</table>

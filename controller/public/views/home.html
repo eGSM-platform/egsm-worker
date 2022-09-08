@@ -1,0 +1,79 @@
+<div class="jumbotron">
+	<h2>SMARTifact - Artifact-driven process monitoring service</h2>
+	<div>
+		
+	</div>
+
+
+	<script type="text/ng-template" id="categoryTree">
+
+		<md-card flex ng-style="config_stages.state==='unopened' && config_stages.compliance==='onTime' && {'background-color': 'silver'} || config_stages.compliance==='skipped' && {'background-color': 'gray'} || config_stages.state==='opened' && config_stages.compliance==='onTime' && {'background-color': 'orange'} || config_stages.state==='closed' && config_stages.compliance==='onTime' && {'background-color': 'darkgreen'} || config_stages.compliance==='outOfOrder' && {'background-color': 'red'}">
+            <md-card-title>
+				<md-card-title-text>
+					<span class="md-headline">Stage: {{config_stages.name}}</span>
+					<span class="md-subhead">State: {{config_stages.state}}</span>
+					<span class="md-subhead">Status: {{config_stages.status}}</span>
+					<span class="md-subhead">Compliance: {{config_stages.compliance}}</span>
+				</md-card-title-text>
+			</md-card-title>
+			<md-content ng-repeat="data in config_stages.dataGuards">
+				<md-card ng-style="data.value===true && {'background-color': 'yellow'} || data.value===false && {'background-color': 'silver'}">
+					<md-card-text>
+						<span>Data guard: {{data.name}}</span>
+						<br/>
+						<span>Value: {{data.value}}</span>
+						<br/>
+						<span>Sentry: {{data.sentry}}</span>
+					</md-card-text>
+				</md-card>
+			</md-content>
+			<md-content ng-repeat="data in config_stages.processGuards">
+				<md-card ng-style="data.value===true && {'background-color': 'yellow'} || data.value===false && {'background-color': 'silver'}">
+					<md-card-text>
+						<span>Process guard: {{data.name}}</span>
+						<br/>
+						<span>Value: {{data.value}}</span>
+						<br/>
+						<span>Sentry: {{data.sentry}}</span>
+					</md-card-text>
+				</md-card>
+			</md-content>
+			<md-content ng-repeat="data in config_stages.milestones">
+				<md-card ng-style="data.value===true && {'background-color': 'green'} || data.value===false && {'background-color': 'silver'}">
+					<md-card-text>
+						<span>Milestone: {{data.name}}</span>
+						<br/>
+						<span>Value: {{data.value}}</span>
+						<br/>
+						<span>Sentry: {{data.sentry}}</span>
+					</md-card-text>
+				</md-card>
+			</md-content>
+			<md-content ng-repeat="data in config_stages.faults">
+				<md-card ng-style="data.value===true && {'background-color': 'red'} || data.value===false && {'background-color': 'silver'}">
+					<md-card-text>
+						<span>Fault guard: {{data.name}}</span>
+						<br/>
+						<span>Value: {{data.value}}</span>
+						<br/>
+						<span>Sentry: {{data.sentry}}</span>
+					</md-card-text>
+				</md-card>
+			</md-content>
+			<md-content ng-if="config_stages.sub_stages">
+				<md-content ng-repeat="config_stages in config_stages.sub_stages" ng-include="'categoryTree'">
+				</md-content>
+			</md-content>
+		</md-card>
+
+	</script>
+
+	<div layout="row">
+		<md-content>
+			<md-content ng-repeat="config_stages in config_stages" ng-include="'categoryTree'">
+			</md-content>
+		</md-content>
+	</div>
+</div>
+
+<p>{{ tagline }}</p>

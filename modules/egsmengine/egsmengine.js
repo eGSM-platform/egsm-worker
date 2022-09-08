@@ -1164,6 +1164,13 @@ var ENGINES = new Map()
 var SUBSCRIBE;
 
 module.exports = {
+    getDataArray:function(engineid){
+        return ""//ENGINES.get(engineid).Data_array
+    },
+    getStageArray:function(engineid){
+        return ""//ENGINES.get(engineid).Stage_array
+    },
+
     setEventRouter: function (publishfunction) {
         SUBSCRIBE = publishfunction
     },
@@ -1171,6 +1178,11 @@ module.exports = {
     //returns true if an engine with the provided id exists
     exists: function (engineid) {
         return ENGINES.has(engineid)
+    },
+
+    getDebugLog: function(engineid){
+        //TODO
+        return ''
     },
 
     createNewEngine: async function (engineid, informalModel, processModel) {

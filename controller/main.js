@@ -4,6 +4,7 @@ var bodyParser = require('body-parser')
 var jsonParser = bodyParser.json()
 var app = express();
 const axios = require('axios').default;
+const path = require('path');
 
 var aux = require("../modules/auxiliary/auxiliary");
 var event_router = require('../modules/eventrouter/eventrouter')
@@ -11,7 +12,7 @@ var mqtt = require('../modules/eventrouter/mqttconnector')
 var LOG = require('../modules/auxiliary/LogManager');
 const egsmengine = require('../modules/egsmengine/egsmengine');
 
-app.use(express.static(__dirname));
+app.use(express.static(__dirname + '/public'));
 
 module.id = "MAIN"
 LOG.logWorker('DEBUG', 'Worker started', module.id)
@@ -219,7 +220,7 @@ app.post("/engine/new", jsonParser, upload.any(), function (req, res, next) {
 })
 
 //New MQTT broker connection
-app.post('/broker_connection/new',jsonParser, upload.any(), function (req, res) {
+app.post('/broker_connection/new', jsonParser, upload.any(), function (req, res) {
     LOG.logWorker('DEBUG', 'New Broker Connection requested', module.id)
     //Check if the necessary data fields are available
     if (typeof req.body == 'undefined') {
@@ -278,7 +279,7 @@ app.delete("/engine/remove", function (req, res) {
 })
 
 //Reset an already existing engine
-app.get('/engine/reset', function (req, res) {
+app.get('/api/reset', function (req, res) {
     LOG.logWorker('DEBUG', `Reset engine requested`, module.id)
 
     var engine_id = req.query.engine_id
@@ -297,19 +298,7 @@ app.get('/engine/reset', function (req, res) {
     res.status(200).send("ok")
 });
 
-app.get('/engine/status', function (req, res) {
-    var engine_id = req.query.engine_id
-    if (typeof engine_id == "undefined") {
-        return res.status(500).send({
-            error: "No engine engine id provided"
-        })
-    }
-    //TODO engine status
-
-    res.status(200).send("ok")
-})
-
-app.get('/engine/config_stages', function (req, res) {
+app.get('/api/config_stages', function (req, res) {
     var engine_id = req.query.engine_id
     if (typeof engine_id == "undefined") {
         return res.status(500).send({
@@ -319,7 +308,7 @@ app.get('/engine/config_stages', function (req, res) {
     res.status(200).json(egsmengine.getCompleteDiagram(engine_id));
 });
 
-app.get('/engine/config_stages_diagram', function (req, res) {
+app.get('/api/config_stages_diagram', function (req, res) {
     var engine_id = req.query.engine_id
     if (typeof engine_id == "undefined") {
         return res.status(500).send({
@@ -330,11 +319,13 @@ app.get('/engine/config_stages_diagram', function (req, res) {
 });
 
 //TODO
-/*app.get('/debugLog', function(req, res) {
-    res.json(LogManager.debugLog);
-});*/
+app.get('/api/debugLog', function (req, res) {
+    
+    var engine_id = req.query.engine_id
+    res.json(egsmengine.getDebugLog(engine_id));
+});
 
-app.get('/engine/infomodel', function (req, res) {
+app.get('/api/infomodel', function (req, res) {
     var engine_id = req.query.engine_id
     if (typeof engine_id == "undefined") {
         return res.status(500).send({
@@ -345,7 +336,7 @@ app.get('/engine/infomodel', function (req, res) {
 });
 
 //TODO: This route may not be necessary since Event Router has direct access to the engines
-app.get('/engine/updateInfoModel', function (req, res) {
+app.get('/api/updateInfoModel', function (req, res) {
     var engine_id = req.query.engine_id
     var name = req.query['name']
     var value = req.query['value']
@@ -356,6 +347,42 @@ app.get('/engine/updateInfoModel', function (req, res) {
     }
     res.status(200).json(egsmengine.updateInfoModel(engine_id, req.query['name'], req.query['value']));
 });
+
+app.get('/api/guards', function (req, res) {
+    var engine_id = req.query.engine_id
+    if(engine_id == ''){
+        res.send('')
+        return
+    }
+    res.json(egsmengine.getDataArray(engine_id));
+});
+
+app.get('/api/stages', function (req, res) {
+    var engineid = req.query.engine_id
+    if(engineid == ''){
+        res.send('')
+        return
+    }
+    res.json(egsmengine.getStageArray(engineid));
+});
+
+app.get('/api/environments', function (req, res) {
+    var engineid = req.query.engine_id
+    if(engineid == ''){
+        res.send('')
+        return
+    }
+    res.json(egsmengine.Environment_);
+});
+
+app.get('/api/externals', function (req, res) {
+    res.json(egsmengine.Externals_);
+});
+
+app.get('*', function (req, res) {
+    res.sendFile('index.html', { root: path.join(__dirname, '/public') });
+});
+
 
 const rest_api = app.listen(LOCAL_HTTP_PORT, () => {
     LOG.logWorker(`DEBUG`, `Worker listening on port ${LOCAL_HTTP_PORT}`, module.id)
