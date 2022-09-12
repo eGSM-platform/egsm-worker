@@ -76,7 +76,7 @@ var INFORMATION = {
                 //handle process flow guard dependencies
                 for (var item in this._array_dep) {
                     if (engine.Data_array[this._array_dep[item]].type == 'P') {
-                        engine.Data_array[this._array_dep[item]].update(false);
+                        engine.Data_array[this._array_dep[item]].update(engine, false);
                     }
                 }
             }
@@ -224,14 +224,14 @@ var STAGE = {
             engine.Stage_array[this._childs[ch]].reset(true);
         }
         //invalidate all milestones for current stage
-        for (var mile in Data_array) {
+        for (var mile in engine.Data_array) {
             if (engine.Data_array[mile].stage == this.name && engine.Data_array[mile].type == 'M') {
                 console.log('Invalidazione --> ' + mile);
                 engine.Data_array[mile].update(engine, true);
             }
         }
         //re-compute all process flow guards for current stage
-        for (var proc in Data_array) {
+        for (var proc in engine.Data_array) {
             if (engine.Data_array[proc].stage == this.name && engine.Data_array[proc].type == 'P') {
                 console.log('Reset process guards --> ' + proc);
                 engine.Data_array[proc].update(engine, true);
@@ -293,7 +293,7 @@ var STAGE = {
         //at least one data flow guard must be active
         var checkData = false;
         for (var i = 0; i < this._dataGuards.length; i++) {
-            LogManager.logModelStage('checkUnopenedToOpened', this.name, 'DATA FLOW GUARD', this._dataGuards[i], Data_array[this._dataGuards[i]].value);
+            LogManager.logModelStage('checkUnopenedToOpened', this.name, 'DATA FLOW GUARD', this._dataGuards[i], engine.Data_array[this._dataGuards[i]].value);
             checkData = checkData || engine.Data_array[this._dataGuards[i]].value;
         }
 
@@ -358,7 +358,7 @@ var STAGE = {
         var checkData = false;
         for (var i = 0; i < this._dataGuards.length; i++) {
             LogManager.logModelStage('checkClosedToOpened', this.name, 'DATA FLOW GUARD', this._dataGuards[i], engine.Data_array[this._dataGuards[i]].value);
-            checkData = checkData || Data_array[this._dataGuards[i]].value;
+            checkData = checkData || engine.Data_array[this._dataGuards[i]].value;
         }
 
         //TODO, change with milestone invalidation logic (TBD)
@@ -389,7 +389,7 @@ var STAGE = {
                         //check if the sentry for current stage contains 'isMilestoneAchieved(m)', and if m belongs to 'stage': if so, then stage 'stage' must be 'skipped'
                         for (var m in stage._milestones) {
                             //TODO, search for the whole PAC rule (currently only the presence of m in the sentry is checked)
-                            if (stage._milestones[m] != null && Data_array[this._processGuards[p]].sentry.indexOf(stage._milestones[m]) > -1) {
+                            if (stage._milestones[m] != null && engine.Data_array[this._processGuards[p]].sentry.indexOf(stage._milestones[m]) > -1) {
                                 stage.changeCompliance('skipped');
                                 LogManager.logModelStage('setUnopenedOnTimeRegularToSkipped', this.name, 'MILESTONE', stage._milestones[m], stage.name);
                             }
@@ -407,20 +407,20 @@ var STAGE = {
         //if stage is unopened
         if (this.state == 'unopened') {
             //determine if it should be opened
-            if (this.checkUnopenedToOpened()) {
+            if (this.checkUnopenedToOpened(engine)) {
                 //open stage
                 this.changeState('opened');
                 //check compliance (execution order)
-                if (this.compliance == 'onTime' && this.checkOnTimeOutOfOrder()) {
+                if (this.compliance == 'onTime' && this.checkOnTimeOutOfOrder(engine)) {
                     //incorrect execution order
                     this.changeCompliance('outOfOrder');
                     //find if there were stages that were skipped
-                    this.setUnopenedOnTimeRegularToSkipped();
+                    this.setUnopenedOnTimeRegularToSkipped(engine);
                 }
                 else if (this.compliance == 'skipped') {
                     //if the stage was 'skipped', then it will always be 'outOfOrder'
                     this.changeCompliance('outOfOrder');
-                    this.setUnopenedOnTimeRegularToSkipped();
+                    this.setUnopenedOnTimeRegularToSkipped(engine);
                 }
             }
         }
@@ -431,21 +431,21 @@ var STAGE = {
                 this.changeStatus('faulty');
             }
             //check if it must be closed
-            if (this.checkOpenedToClosed()) {
+            if (this.checkOpenedToClosed(engine)) {
                 this.changeState('closed');
             }
         }
         //if stage is closed
         else if (this.state == 'closed') {
             //check if it must be reopened
-            if (this.checkClosedToOpened()) {
+            if (this.checkClosedToOpened(engine)) {
                 //evaluate compliance before resetting stage (and inner elements)
-                var checkOnTimeOutOfOrder_checkClosedToOpened = this.checkOnTimeOutOfOrder();
+                var checkOnTimeOutOfOrder_checkClosedToOpened = this.checkOnTimeOutOfOrder(engine);
                 this.changeState('opened');
                 if (this.compliance == 'onTime' && checkOnTimeOutOfOrder_checkClosedToOpened) {
                     //if compliance was not met, then set stage as 'outOfOrder' 
                     this.changeCompliance('outOfOrder');
-                    this.setUnopenedOnTimeRegularToSkipped();
+                    this.setUnopenedOnTimeRegularToSkipped(engine);
                 }
             }
         }
@@ -546,7 +546,7 @@ var PARSER = {
                 var guard = stage['ca:DataFlowGuard'][dfg];
                 var guardId = guard['$'].id;
                 //convert expression
-                var sentry = PARSER.convertExpressionToSentry(guard['$'].expression, guardId);
+                var sentry = PARSER.convertExpressionToSentry(engine, guard['$'].expression, guardId);
                 //create DATA instance and initialize it
                 engine.Data_array[guardId] = Object.create(DATA);
                 engine.Data_array[guardId].init(guardId, stageId, sentry, 'D');
@@ -557,7 +557,7 @@ var PARSER = {
                 var guard = stage['ca:ProcessFlowGuard'][pfg];
                 var guardId = guard['$'].id;
                 //convert expression
-                var sentry = PARSER.convertExpressionToSentry(guard['$'].expression, guardId);
+                var sentry = PARSER.convertExpressionToSentry(engine, guard['$'].expression, guardId);
                 //create DATA instance and initialize it
                 engine.Data_array[guardId] = Object.create(DATA);
                 engine.Data_array[guardId].init(guardId, stageId, sentry, 'P');
@@ -568,7 +568,7 @@ var PARSER = {
                 var guard = stage['ca:FaultLogger'][fl];
                 var guardId = guard['$'].id;
                 //convert expression
-                var sentry = PARSER.convertExpressionToSentry(guard['$'].expression, guardId);
+                var sentry = PARSER.convertExpressionToSentry(engine, guard['$'].expression, guardId);
                 //create DATA instance and initialize it
                 engine.Data_array[guardId] = Object.create(DATA);
                 engine.Data_array[guardId].init(guardId, stageId, sentry, 'F');
@@ -579,7 +579,7 @@ var PARSER = {
                 var milestone = stage['ca:Milestone'][m];
                 var milestoneId = milestone['$'].id;
                 //convert expression
-                var sentry = PARSER.convertExpressionToSentry(milestone['ca:Condition'][0]['$'].expression, milestoneId);
+                var sentry = PARSER.convertExpressionToSentry(engine, milestone['ca:Condition'][0]['$'].expression, milestoneId);
                 //create DATA instance and initialize it
                 engine.Data_array[milestoneId] = Object.create(DATA);
                 engine.Data_array[milestoneId].init(milestoneId, stageId, sentry, 'M');
@@ -602,7 +602,7 @@ var PARSER = {
                     for (var k = 0; k < stage_dep.length; k++) {
                         if (engine.Stage_array[stage_dep[k]] != undefined) {
                             //update STAGE elements
-                            engine.Stage_array[stage_dep[k]].update();
+                            engine.Stage_array[stage_dep[k]].update(engine);
                         }
                     }
                 }
@@ -673,7 +673,7 @@ var PARSER = {
             //together with an array containing all changed elements
             //the listener then calls method changeAttributes(attributes)
             if (attributes != undefined) {
-                if (Info_array[id] != undefined) {
+                if (engine.Info_array[id] != undefined) {
                     engine.Info_array[id].changeAttributes(engine, attributes);
                 }
             }
@@ -688,10 +688,10 @@ var PARSER = {
             engine.EventAdministrator.on('DATA', data_item.name, function (dep) {
                 if (dep != undefined) {
                     for (var k = 0; k < dep.length; k++) {
-                        if (engine.Stage_array[dep[k]] != undefined) { engine.Stage_array[dep[k]].update(); }
+                        if (engine.Stage_array[dep[k]] != undefined) { engine.Stage_array[dep[k]].update(engine); }
                     }
                     for (var k = 0; k < dep.length; k++) {
-                        if (engine.Data_array[dep[k]] != undefined && engine.Data_array[dep[k]].type == 'P') { engine.Data_array[dep[k]].update(engine.false); }
+                        if (engine.Data_array[dep[k]] != undefined && engine.Data_array[dep[k]].type == 'P') { engine.Data_array[dep[k]].update(engine,false); }
                     }
                     for (var k = 0; k < dep.length; k++) {
                         if (engine.Data_array[dep[k]] != undefined && engine.Data_array[dep[k]].type == 'F') { engine.Data_array[dep[k]].update(engine, false); }
@@ -1119,6 +1119,7 @@ function Engine(id) {
             return json_model;
         },
         updateInfoModel: function (name, value) {
+            console.log(`update model: ${name}->${value}`)
             if (!passive) {
                 var attrs = [];
                 if (value != undefined && value != '') {
@@ -1164,10 +1165,10 @@ var ENGINES = new Map()
 var SUBSCRIBE;
 
 module.exports = {
-    getDataArray:function(engineid){
+    getDataArray: function (engineid) {
         return ""//ENGINES.get(engineid).Data_array
     },
-    getStageArray:function(engineid){
+    getStageArray: function (engineid) {
         return ""//ENGINES.get(engineid).Stage_array
     },
 
@@ -1180,7 +1181,7 @@ module.exports = {
         return ENGINES.has(engineid)
     },
 
-    getDebugLog: function(engineid){
+    getDebugLog: function (engineid) {
         //TODO
         return ''
     },
@@ -1247,8 +1248,8 @@ module.exports = {
         return ENGINES.length;
     },
 
-    notifyEngine: function (engineid, name, data) {
-        ENGINES.get(engineid).updateInfoModel(name, data)
+    notifyEngine: function (engineid, name, value) {
+            ENGINES.get(engineid).updateInfoModel(name, value)
     }
 
 }

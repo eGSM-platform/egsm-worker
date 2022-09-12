@@ -354,7 +354,7 @@ app.get('/api/guards', function (req, res) {
         res.send('')
         return
     }
-    res.json(egsmengine.getDataArray(engine_id));
+    res.json(egsmengine._Guards);
 });
 
 app.get('/api/stages', function (req, res) {
@@ -363,7 +363,7 @@ app.get('/api/stages', function (req, res) {
         res.send('')
         return
     }
-    res.json(egsmengine.getStageArray(engineid));
+    res.json(egsmengine._Stages);
 });
 
 app.get('/api/environments', function (req, res) {

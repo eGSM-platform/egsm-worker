@@ -117,6 +117,7 @@ function onMessageReceived(hostname, port, topic, message) {
                                 }
                             }
                         }
+                        ENGINES.get(subscribers[engine]).onMessageReceived(subscribers[engine], JSON.parse(message.toString()).event.payloadData.eventid, '')
                     }
                 }
             }
@@ -124,8 +125,9 @@ function onMessageReceived(hostname, port, topic, message) {
         //Check if the event is from Artifact and forward it to the engine
         else if (elements.length == 3 && elements[2] == 'status') {
             //Forward message to the engine
-
-            ENGINES.get(subscribers[engine]).onMessageReceived(subscribers[engine], JSON.parse(message.toString()).event.payloadData.eventid, '')
+            //client.methods.notifyPASO({ parameters: { name: elements[0], value: (JSON.parse(message.toString())).event.payloadData.status, timestamp: (JSON.parse(message.toString())).event.payloadData.timestamp } }, function (data, response) {
+            //ENGINES.get(subscribers[engine]).onMessageReceived(subscribers[engine], JSON.parse(message.toString()).event.payloadData.eventid, '')
+            ENGINES.get(subscribers[engine]).onMessageReceived(subscribers[engine], elements[0], JSON.parse(message.toString()).event.payloadData.status)
         }
     }
 }
@@ -211,7 +213,7 @@ module.exports = {
     },
 
     onEngineStop: function (engineid) {
-        if(ENGINES.has(engineid)){
+        if (ENGINES.has(engineid)) {
             var topics = []
             SUBSCRIPTIONS.forEach(function (value, key) {
                 for (i in value) {
@@ -228,7 +230,7 @@ module.exports = {
             ENGINES.delete(engineid)
             return 'ok'
         }
-        else{
+        else {
             return 'not_defined'
         }
     }
