@@ -215,13 +215,13 @@ var STAGE = {
     reset: function (engine, resetStage) {
         LogManager.logTrace('reset', this.name, 'STAGE', this.status, this.state, this.compliance);
         if (resetStage) {
-            this.changeState('unopened');
+            this.changeState(engine, 'unopened');
             this.changeStatus('regular');
             this.changeCompliance('onTime');
         }
         //recursively reset all child stages
         for (var ch in this._childs) {
-            engine.Stage_array[this._childs[ch]].reset(true);
+            engine.Stage_array[this._childs[ch]].reset(engine, true);
         }
         //invalidate all milestones for current stage
         for (var mile in engine.Data_array) {
@@ -238,7 +238,7 @@ var STAGE = {
             }
         }
     },
-    changeState: function (newState) {
+    changeState: function (engine, newState) {
         LogManager.logModelStage('changeState', this.name, 'state', this.state, newState);
         LogManager.logTrace('changedState', this.name, 'STAGE', 'state', this.state, newState);
         var oldState = this.state;
@@ -251,7 +251,7 @@ var STAGE = {
         this._history.push(rev);
         //reset stage if re-opened
         if (oldState == 'closed' && (newState == 'opened' || newState == 'unopened')) {
-            this.reset(false);
+            this.reset(engine, false);
         }
     },
     changeCompliance: function (newCompliance) {
@@ -381,7 +381,7 @@ var STAGE = {
                 //check all process flow guards for current stage
                 for (var p in this._processGuards) {
                     //check if the sentry for current stage contains 'GSM.isStageActive(stage)': if so, then stage 'stage' must be 'skipped'
-                    if (engine.Data_array[this._processGuards[p]].sentry.indexOf("GSM.isStageActive(\"" + stage.name + "\")") > -1) {
+                    if (engine.Data_array[this._processGuards[p]].sentry.indexOf("this.isStageActive(\"" + stage.name + "\")") > -1) {
                         stage.changeCompliance('skipped');
                         LogManager.logModelStage('setUnopenedOnTimeRegularToSkipped', this.name, 'PROCESS FLOW GUARD', this._processGuards[p], stage.name);
                     }
@@ -409,7 +409,7 @@ var STAGE = {
             //determine if it should be opened
             if (this.checkUnopenedToOpened(engine)) {
                 //open stage
-                this.changeState('opened');
+                this.changeState(engine, 'opened');
                 //check compliance (execution order)
                 if (this.compliance == 'onTime' && this.checkOnTimeOutOfOrder(engine)) {
                     //incorrect execution order
@@ -432,7 +432,7 @@ var STAGE = {
             }
             //check if it must be closed
             if (this.checkOpenedToClosed(engine)) {
-                this.changeState('closed');
+                this.changeState(engine, 'closed');
             }
         }
         //if stage is closed
@@ -491,8 +491,8 @@ var PARSER = {
         reg = new RegExp(/\{infoModel\.\/infoModel\/(\w+)\/(\w+)\} ([!<>'=]=?) \[(\w+)\]/g);
         while ((result = reg.exec(sentry)) !== null) {
             variable = result[1];
-            sentry = sentry.replace(/\{infoModel\.\/infoModel\/(\w+)\/(\w+)\} ([!<>'=]=?) \[(\w+)\]/, "GSM.isInfoModel(\"$1\",\"$2\",\"$4\",\"$3\")");
-            LogManager.logParser(artifactId, 'PAC GSM.isInfoModel', variable, sentry);
+            sentry = sentry.replace(/\{infoModel\.\/infoModel\/(\w+)\/(\w+)\} ([!<>'=]=?) \[(\w+)\]/, "this.isInfoModel(\"$1\",\"$2\",\"$4\",\"$3\")");
+            LogManager.logParser(artifactId, 'PAC this.isInfoModel', variable, sentry);
             //check for dependencies and populate array (which is then used to populate the internal data structure)
             if (engine.Dependency_Array[artifactId] == undefined && variable != '') {
                 engine.Dependency_Array[artifactId] = [];
