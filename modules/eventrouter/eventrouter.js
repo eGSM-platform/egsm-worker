@@ -233,6 +233,10 @@ module.exports = {
         else {
             return 'not_defined'
         }
+    },
+
+    getAttachedArtifacts: function(engineid){
+        return ARTIFACTS.get(engineid)
     }
 };
 
