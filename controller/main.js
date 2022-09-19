@@ -256,10 +256,15 @@ app.post('/broker_connection/new', jsonParser, upload.any(), function (req, res)
 })
 
 //Delete existing engine
-app.delete("/engine/remove", function (req, res) {
+app.delete("/engine/remove",jsonParser, function (req, res) {
     LOG.logWorker('DEBUG', `Delete engine requested`, module.id)
 
-    var engine_id = req.query.engine_id
+    if (typeof req.body == 'undefined') {
+        LOG.logWorker('DEBUG', 'Request body is missing', module.id)
+        return res.status(500).send({ error: "Body missing" })
+    }
+
+    var engine_id = req.body.engine_id
     if (typeof engine_id == "undefined") {
         LOG.logWorker('DEBUG', 'Request canceled. engine_id is missing', module.id)
         return res.status(500).send({
