@@ -61,6 +61,34 @@ function deleteSubscription(engineid, topic, hostname, port) {
     }
 }
 
+/*Required structure of eventDetailsJson:
+-Artifact:
+    -<artifact_type>:<artifact_id> (artifact_name)
+    -<timestamp>
+    -<artifact_state> attached/detached
+    -<process_type>
+    -<process_id>u
+-Adhoc:
+    ........
+-Stage:
+    .........
+*/
+function publishLogEvent(type, engineid, eventDetailsJson) {
+    var topic = engineid
+    switch (type) {
+        case 'stage':
+            topic = topic + '/stage_log'
+            break;
+        case 'artifact':
+            topic = topic + '/artifact_log'
+            break;
+        case 'adhoc':
+            topic = topic + '/adhoc'
+            break;
+    }
+    mqtt.publishTopic(ENGINES.get(engineid).hostname, ENGINES.get(engineid).port, topic, eventDetailsJson)
+}
+
 function onMessageReceived(hostname, port, topic, message) {
     LOG.logWorker('DEBUG', `onMessageReceived called`, module.id)
     var key = [hostname, port, topic].join(":")
@@ -78,46 +106,91 @@ function onMessageReceived(hostname, port, topic, message) {
         var artifacts = ARTIFACTS.get(subscribers[engine])
         //Check if the event is from Stakeholder -> do binding/unbinding
         if (elements.length == 2) {
-            //Iterate through the engine's skateholders and look for match
-            //If a stakeholder found and it is verified that the message is coming from a stakeholder
-            //then iterating through the artifacts and their binding and unbinding events
-            //Performing subscribe and/or unsubscribe operations if any event match found
-            for (var stakeholder in stakeholders) {
-                if ((elements[0] == stakeholders[stakeholder].name) && (elements[1] == stakeholders[stakeholder].instance) && (hostname == stakeholders[stakeholder].host) && (port == stakeholders[stakeholder].port)) {
-                    for (var artifact in artifacts) {
-                        //Binding events
-                        for (var bindigEvent in artifacts[artifact].bindingEvents) {
-                            if (msgJson.event.payloadData.eventid == artifacts[artifact].bindingEvents[bindigEvent]) {
-                                //Unsubscribing from old artifact topic if it exists
-                                if (artifacts[artifact].id != '') {
-                                    deleteSubscription(subscribers[engine],
-                                        artifacts[artifact].name + '/' + artifacts[artifact].id + '/status',
-                                        artifacts[artifact].host,
-                                        artifacts[artifact].port)
-                                }
-                                artifacts[artifact].id = msgJson.event.payloadData.data || ''
-                                if (artifacts[artifact].id != '') {
-                                    createSubscription(subscribers[engine],
-                                        artifacts[artifact].name + '/' + artifacts[artifact].id + '/status',
-                                        artifacts[artifact].host,
-                                        artifacts[artifact].port)
-                                }
-                            }
-                        }
-                        //Unbinding events
-                        for (var unbindigEvent in artifacts[artifact].unbindingEvents) {
-                            if (msgJson.event.payloadData.eventid == artifacts[artifact].unbindingEvents[unbindigEvent]) {
-                                if (artifacts[artifact].id != '') {
-                                    deleteSubscription(subscribers[engine],
-                                        artifacts[artifact].name + '/' + artifacts[artifact].id + '/status',
-                                        artifacts[artifact].host,
-                                        artifacts[artifact].port)
+            //Request from aggregator received
+            if (elements[1] == 'aggregator_gate') {
+                if (msgJson.requesttype == 'stage_duration_compliance_check') {
 
-                                    artifacts[artifact].id = ''
+                }
+                if (msgJson.requesttype == 'stage_opening_limit') {
+
+                }
+            }
+            //Stakeholder message received
+            else {
+                //Iterate through the engine's skateholders and look for match
+                //If a stakeholder found and it is verified that the message is coming from a stakeholder
+                //then iterating through the artifacts and their binding and unbinding events
+                //Performing subscribe and/or unsubscribe operations if any event match found
+                for (var stakeholder in stakeholders) {
+                    if ((elements[0] == stakeholders[stakeholder].name) && (elements[1] == stakeholders[stakeholder].instance) && (hostname == stakeholders[stakeholder].host) && (port == stakeholders[stakeholder].port)) {
+                        for (var artifact in artifacts) {
+                            //Binding events
+                            for (var bindigEvent in artifacts[artifact].bindingEvents) {
+                                if (msgJson.event.payloadData.eventid == artifacts[artifact].bindingEvents[bindigEvent]) {
+                                    //Unsubscribing from old artifact topic if it exists
+                                    if (artifacts[artifact].id != '') {
+                                        var engineid = subscribers[engine]
+                                        //Sending event to aggregator
+                                        elements = engineid.split('/')
+                                        var eventDetail = {
+                                            artifact_name: artifacts[artifact].name + '/' + artifacts[artifact].id,
+                                            timestamp: Math.floor(Date.now() / 1000),
+                                            artifact_state: 'detached',
+                                            process_type: elements[0],
+                                            process_id: elements[1]
+                                        }
+                                        publishLogEvent('artifact', engineid, JSON.stringify(eventDetail))
+                                        deleteSubscription(engineid,
+                                            artifacts[artifact].name + '/' + artifacts[artifact].id + '/status',
+                                            artifacts[artifact].host,
+                                            artifacts[artifact].port)
+                                    }
+                                    artifacts[artifact].id = msgJson.event.payloadData.data || ''
+                                    if (artifacts[artifact].id != '') {
+                                        var engineid = subscribers[engine]
+                                        //Sending event to aggregator
+                                        elements = engineid.split('/')
+                                        var eventDetail = {
+                                            artifact_name: artifacts[artifact].name + '/' + artifacts[artifact].id,
+                                            timestamp: Math.floor(Date.now() / 1000),
+                                            artifact_state: 'attached',
+                                            process_type: elements[0],
+                                            process_id: elements[1]
+                                        }
+                                        publishLogEvent('artifact', engineid, JSON.stringify(eventDetail))
+                                        createSubscription(engineid,
+                                            artifacts[artifact].name + '/' + artifacts[artifact].id + '/status',
+                                            artifacts[artifact].host,
+                                            artifacts[artifact].port)
+                                    }
                                 }
                             }
+                            //Unbinding events
+                            for (var unbindigEvent in artifacts[artifact].unbindingEvents) {
+                                if (msgJson.event.payloadData.eventid == artifacts[artifact].unbindingEvents[unbindigEvent]) {
+                                    if (artifacts[artifact].id != '') {
+                                        var engineid = subscribers[engine]
+                                        //Sending event to aggregator
+                                        elements = engineid.split('/')
+                                        var eventDetail = {
+                                            artifact_name: artifacts[artifact].name + '/' + artifacts[artifact].id,
+                                            timestamp: Math.floor(Date.now() / 1000),
+                                            artifact_state: 'detached',
+                                            process_type: elements[0],
+                                            process_id: elements[1]
+                                        }
+                                        publishLogEvent('artifact', engineid, JSON.stringify(eventDetail))
+                                        deleteSubscription(engineid,
+                                            artifacts[artifact].name + '/' + artifacts[artifact].id + '/status',
+                                            artifacts[artifact].host,
+                                            artifacts[artifact].port)
+
+                                        artifacts[artifact].id = ''
+                                    }
+                                }
+                            }
+                            ENGINES.get(subscribers[engine]).onMessageReceived(subscribers[engine], JSON.parse(message.toString()).event.payloadData.eventid, '')
                         }
-                        ENGINES.get(subscribers[engine]).onMessageReceived(subscribers[engine], JSON.parse(message.toString()).event.payloadData.eventid, '')
                     }
                 }
             }
@@ -196,6 +269,10 @@ module.exports = {
                     stakeHolders[key]['$'].broker_host || ENGINES.get(engineid).hostname,
                     stakeHolders[key]['$'].port || ENGINES.get(engineid).port);
             }
+
+            //Subscribe to a special topic to 'open' a communication interfaces for Aggregator Agent(s)
+            createSubscription(engineid, engineid + '/aggregator_gate', stakeHolders[key]['$'].broker_host
+                || ENGINES.get(engineid).hostname, stakeHolders[key]['$'].port || ENGINES.get(engineid).port)
             return 'ok'
         })
     },
@@ -235,9 +312,9 @@ module.exports = {
         }
     },
 
-    getAttachedArtifacts: function(engineid){
+    getAttachedArtifacts: function (engineid) {
         return ARTIFACTS.get(engineid)
-    }
+    },
 };
 
 
