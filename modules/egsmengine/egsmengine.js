@@ -5,6 +5,7 @@ var xml2js = require('xml2js');
 var EventManager = require('../auxiliary/EventManager');
 var LogManager = require("../auxiliary/LogManager")
 var fs = require('fs');
+const eventrouter = require('../eventrouter/eventrouter');
 
 //===============================================================DATA STRUCTURES BEGIN=========================================================================
 
@@ -29,7 +30,7 @@ function Engine(id) {
         this.Event_array = {};
 
         //reset event manager
-       this.eventManager.reset();
+        this.eventManager.reset();
 
         //parse XML, section 'ca:EventModel'
         var events = processModel['ca:CompositeApplicationType']['ca:EventModel'][0]['ca:Event'];
@@ -166,7 +167,7 @@ function Engine(id) {
             } catch (e) {
                 // Log exception
                 console.log(`eval err: ${expression}`)
-                LogManager.logWorker(`ERROR`, `Sentry evaluation error: ${expression}`)
+                //LogManager.logWorker(`ERROR`, `Sentry evaluation error: ${expression}`)
                 // if an exception is raised, always return 'false'
                 return false;
             }
@@ -372,7 +373,7 @@ var DATA = {
         var oldValue = this.value;
         var newValue = this.value;
 
-        LogManager.logModelData(this.name, this.type, this.stage, 'UPDATE START', this.value, this.sentry);
+        //LogManager.logModelData(this.name, this.type, this.stage, 'UPDATE START', this.value, this.sentry);
 
         //evaluate sentry
         if (this.type == 'D') //Data flow guard
@@ -435,6 +436,7 @@ var STAGE = {
         this._faults = [];
         this._childs = [];
         this._history = [];
+        this.verifyStageState()
     },
 
     // reset model
@@ -463,6 +465,25 @@ var STAGE = {
             }
         }
     },
+
+    verifyStageState: function () {
+        if (this.status == 'faulty' || this.compliance == 'outOfOrder' || this.compliance == 'skipped') {
+            this.logStageState()
+        }
+    },
+
+    logStageState: function () {
+        var eventJson = {
+            processid: this.engineid,
+            stagename: this.name,
+            timestamp: Date.now(),
+            status: this.status,
+            state: this.state,
+            compliance: this.compliance,
+        }
+        eventrouter.publishLogEvent('stage', this.engineid, JSON.stringify(eventJson))
+    },
+
     changeState: function (newState) {
         var oldState = this.state;
         this.state = newState;
@@ -476,6 +497,7 @@ var STAGE = {
         if (oldState == 'closed' && (newState == 'opened' || newState == 'unopened')) {
             this.reset(false);
         }
+        this.verifyStageState()
     },
     changeCompliance: function (newCompliance) {
         var oldCompliance = this.compliance;
@@ -486,6 +508,7 @@ var STAGE = {
         rev.oldValue = oldCompliance;
         rev.newValue = newCompliance;
         this._history.push(rev);
+        this.verifyStageState()
     },
     changeStatus: function (newStatus) {
         var oldStatus = this.status;
@@ -496,6 +519,7 @@ var STAGE = {
         rev.oldValue = oldStatus;
         rev.newValue = newStatus;
         this._history.push(rev);
+        this.verifyStageState()
     },
     //verify if a stage should be opened (if it should transition from 'Unopened' to 'Opened')
     checkUnopenedToOpened: function () {

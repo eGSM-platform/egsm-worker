@@ -69,9 +69,15 @@ function deleteSubscription(engineid, topic, hostname, port) {
     -<process_type>
     -<process_id>u
 -Adhoc:
+    TODO
     ........
 -Stage:
-    .........
+    -<processid>
+    -<stagename>
+    -<timestamp>
+    -<status>
+    -<state>
+    -<compliance>
 */
 function publishLogEvent(type, engineid, eventDetailsJson) {
     var topic = engineid
@@ -208,6 +214,7 @@ function onMessageReceived(hostname, port, topic, message) {
 mqtt.init(onMessageReceived)
 
 module.exports = {
+    publishLogEvent:publishLogEvent,
     //Set up default broker and onMessageReceived function for a specified engine
     setEngineDefaults: function (engineid, hostname, port, onMessageReceived) {
         LOG.logWorker('DEBUG', `setDefaultBroker called: ${engineid} -> ${hostname}:${port}`, module.id)
