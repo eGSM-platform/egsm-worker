@@ -466,11 +466,11 @@ var STAGE = {
         }
     },
 
-    verifyStageState: function () {
-        if (this.status == 'faulty' || this.compliance == 'outOfOrder' || this.compliance == 'skipped') {
-            this.logStageState()
-        }
-    },
+    //verifyStageState: function () {
+    //    if (this.status == 'faulty' || this.compliance == 'outOfOrder' || this.compliance == 'skipped') {
+    //        this.logStageState()
+    //    }
+    //},
 
     logStageState: function () {
         var eventJson = {
@@ -497,7 +497,7 @@ var STAGE = {
         if (oldState == 'closed' && (newState == 'opened' || newState == 'unopened')) {
             this.reset(false);
         }
-        this.verifyStageState()
+        this.logStageState()
     },
     changeCompliance: function (newCompliance) {
         var oldCompliance = this.compliance;
@@ -508,7 +508,7 @@ var STAGE = {
         rev.oldValue = oldCompliance;
         rev.newValue = newCompliance;
         this._history.push(rev);
-        this.verifyStageState()
+        this.logStageState()
     },
     changeStatus: function (newStatus) {
         var oldStatus = this.status;
@@ -519,7 +519,7 @@ var STAGE = {
         rev.oldValue = oldStatus;
         rev.newValue = newStatus;
         this._history.push(rev);
-        this.verifyStageState()
+        this.logStageState()
     },
     //verify if a stage should be opened (if it should transition from 'Unopened' to 'Opened')
     checkUnopenedToOpened: function () {
