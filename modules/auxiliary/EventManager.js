@@ -14,12 +14,12 @@ module.exports= {
       events: [],
 
       emit: function (event, arg1, arg2) {
-        LogManager.logEvent('EMIT event emitted - ' + event + ' - ' + arg1 + ' - ' + arg2);
+        //LogManager.logEvent('EMIT event emitted - ' + event + ' - ' + arg1 + ' - ' + arg2);
         this.eventEmitter.emit(event, arg1, arg2);
       },
       //handle listener registration (with custom logging)
       on: function (source, eventName, listener) {
-        LogManager.logEvent('ON listener registered - ' + source + ' - ' + eventName);
+        //LogManager.logEvent('ON listener registered - ' + source + ' - ' + eventName);
         this.eventEmitter.on(eventName, listener);
         this.events.push(eventName)
       },
@@ -28,7 +28,7 @@ module.exports= {
         for (var key in events) {
           //remove all listeners
           this.eventEmitter.removeAllListeners(this.events[key]);
-          LogManager.logEvent('REMOVE listener removed - ' + this.events[key]);
+          //LogManager.logEvent('REMOVE listener removed - ' + this.events[key]);
         }
       }
 
