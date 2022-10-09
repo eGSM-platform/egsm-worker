@@ -67,7 +67,7 @@ function deleteSubscription(engineid, topic, hostname, port) {
     -<timestamp>
     -<artifact_state> attached/detached
     -<process_type>
-    -<process_id>u
+    -<process_id>
 -Adhoc:
     TODO
     ........
@@ -93,6 +93,15 @@ function publishLogEvent(type, engineid, eventDetailsJson) {
             break;
     }
     mqtt.publishTopic(ENGINES.get(engineid).hostname, ENGINES.get(engineid).port, topic, eventDetailsJson)
+}
+
+/**
+ * Function to notify Aggregators through 'process_lifecycle' topic about the instatiation of a new process
+ * @param {string} engineid Engine ID
+ * @param {string} event created/deleted events 
+ */
+function publishLifeCycleEvent(engineid, event){
+    mqtt.publishTopic(ENGINES.get(engineid).hostname, ENGINES.get(engineid).port, 'process_lifecycle', event)
 }
 
 function onMessageReceived(hostname, port, topic, message) {
@@ -214,6 +223,7 @@ function onMessageReceived(hostname, port, topic, message) {
 mqtt.init(onMessageReceived)
 
 module.exports = {
+    publishLifeCycleEvent:publishLifeCycleEvent,
     publishLogEvent:publishLogEvent,
     //Set up default broker and onMessageReceived function for a specified engine
     setEngineDefaults: function (engineid, hostname, port, onMessageReceived) {

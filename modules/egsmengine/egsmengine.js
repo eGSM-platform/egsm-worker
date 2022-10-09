@@ -996,6 +996,8 @@ module.exports = {
         ENGINES.set(engineid, new Engine(engineid))
         console.log("New Engine created")
         startEngine(engineid, informalModel, processModel)
+        //Notify Aggregators about the new Engine Instance
+        eventrouter.publishLifeCycleEvent(engineid, 'created')
         return 'created'
     },
 
@@ -1004,6 +1006,8 @@ module.exports = {
             return "not_defined"
         }
         ENGINES.delete(engineid)
+        //Notify Aggregators about deleting the Engine
+        eventrouter.publishLifeCycleEvent(engineid, 'deleted')
         return 'removed'
     },
 
