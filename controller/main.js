@@ -30,7 +30,7 @@ egsmengine.setEventRouter(event_router.processPublish)
 
 //TODO: Add a websocket-based connection watchdog between worker and supervisor
 
-function getCredentials(options) {
+function getCredentials() {
     const config = {
         method: 'post',
         url: "http://" + SUPERVISOR + ":" + SUPERVISOR_PORT + "/worker/register",

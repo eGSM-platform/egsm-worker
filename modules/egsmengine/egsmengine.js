@@ -436,7 +436,6 @@ var STAGE = {
         this._faults = [];
         this._childs = [];
         this._history = [];
-        this.verifyStageState()
     },
 
     // reset model
@@ -465,12 +464,6 @@ var STAGE = {
             }
         }
     },
-
-    //verifyStageState: function () {
-    //    if (this.status == 'faulty' || this.compliance == 'outOfOrder' || this.compliance == 'skipped') {
-    //        this.logStageState()
-    //    }
-    //},
 
     logStageState: function () {
         var eventJson = {
