@@ -8,7 +8,7 @@ module.id = "EVENTR"
 let ENGINES = new Map(); //ENGINE_ID -> [DEFAULT_BROKER, onMessageReceived]
 let SUBSCRIPTIONS = new Map(); //{HOST, PORT, TOPIC}-> [ENGINE_ID]
 let ARTIFACTS = new Map() //ENGINE_ID -> [{ARTIFACT_NAME, BROKER, HOST, BINDING, UNBINDING, ID}]
-let STAKEHOLDERS = new Map() //Engine_ID -> [STAKEHOLDER_NAME, PROCESS_ID, BROKER, HOST]
+let STAKEHOLDERS = new Map() //ENGINE_ID -> [{STAKEHOLDER_NAME, PROCESS_ID, BROKER, HOST}]
 
 //Subscribe an engine specified by its ID to a topic at a specified broker
 function createSubscription(engineid, topic, hostname, port) {
@@ -100,8 +100,15 @@ function publishLogEvent(type, engineid, eventDetailsJson) {
  * @param {string} engineid Engine ID
  * @param {string} event created/deleted events 
  */
-function publishLifeCycleEvent(engineid, event){
-    mqtt.publishTopic(ENGINES.get(engineid).hostname, ENGINES.get(engineid).port, 'process_lifecycle', event)
+function publishLifeCycleEvent(engineid, event) {
+    LOG.logWorker('DEBUG',`Publishing lifecyle event from ${engineid}`, module.id)
+    var elements = engineid.split('/')
+    mqtt.publishTopic(ENGINES.get(engineid).hostname, ENGINES.get(engineid).port, 'process_lifecycle', JSON.stringify({
+        event_type: event,
+        process_type: elements[0],
+        instance_id: elements[1],
+        stakeholders: STAKEHOLDERS.get(engineid)
+    }))
 }
 
 function onMessageReceived(hostname, port, topic, message) {
@@ -223,8 +230,8 @@ function onMessageReceived(hostname, port, topic, message) {
 mqtt.init(onMessageReceived)
 
 module.exports = {
-    publishLifeCycleEvent:publishLifeCycleEvent,
-    publishLogEvent:publishLogEvent,
+    publishLifeCycleEvent: publishLifeCycleEvent,
+    publishLogEvent: publishLogEvent,
     //Set up default broker and onMessageReceived function for a specified engine
     setEngineDefaults: function (engineid, hostname, port, onMessageReceived) {
         LOG.logWorker('DEBUG', `setDefaultBroker called: ${engineid} -> ${hostname}:${port}`, module.id)
@@ -327,10 +334,6 @@ module.exports = {
         else {
             return 'not_defined'
         }
-    },
-
-    getAttachedArtifacts: function (engineid) {
-        return ARTIFACTS.get(engineid)
     },
 };
 

@@ -189,6 +189,8 @@ app.post("/engine/new", jsonParser, upload.any(), function (req, res, next) {
     //Set up Default Broker for the engine
     event_router.setEngineDefaults(engine_id, mqtt_broker, mqtt_port, egsmengine.notifyEngine)
 
+    //Adding Engine to the Event Router
+    event_router.initConnections(engine_id, eventRouterConfig.buffer.toString())
     //Creating new engine
     egsmengine.createNewEngine(engine_id, informalModel.buffer.toString(), processModel.buffer.toString()).then(
         function (value) {
@@ -214,9 +216,6 @@ app.post("/engine/new", jsonParser, upload.any(), function (req, res, next) {
             }
         }
     )
-
-    //Adding Engine to the Event Router
-    event_router.initConnections(engine_id, eventRouterConfig.buffer.toString())
 })
 
 //New MQTT broker connection
@@ -256,7 +255,7 @@ app.post('/broker_connection/new', jsonParser, upload.any(), function (req, res)
 })
 
 //Delete existing engine
-app.delete("/engine/remove",jsonParser, function (req, res) {
+app.delete("/engine/remove", jsonParser, function (req, res) {
     LOG.logWorker('DEBUG', `Delete engine requested`, module.id)
 
     if (typeof req.body == 'undefined') {
@@ -271,8 +270,6 @@ app.delete("/engine/remove",jsonParser, function (req, res) {
             error: "No engine_id"
         })
     }
-    //Remove engine from EventRouter
-    event_router.onEngineStop(engine_id)
     //Remove engine from Engine array
     var result = egsmengine.removeEngine(engine_id)
     if (result == 'not_defined') {
@@ -280,6 +277,8 @@ app.delete("/engine/remove",jsonParser, function (req, res) {
             error: "not_defined"
         })
     }
+    //Remove engine from EventRouter
+    event_router.onEngineStop(engine_id)
     res.status(200).send("ok")
 })
 
@@ -325,7 +324,7 @@ app.get('/api/config_stages_diagram', function (req, res) {
 
 //TODO
 app.get('/api/debugLog', function (req, res) {
-    
+
     var engine_id = req.query.engine_id
     res.json(egsmengine.getDebugLog(engine_id));
 });
@@ -355,7 +354,7 @@ app.get('/api/updateInfoModel', function (req, res) {
 
 app.get('/api/guards', function (req, res) {
     var engine_id = req.query.engine_id
-    if(engine_id == ''){
+    if (engine_id == '') {
         res.send('')
         return
     }
@@ -364,7 +363,7 @@ app.get('/api/guards', function (req, res) {
 
 app.get('/api/stages', function (req, res) {
     var engineid = req.query.engine_id
-    if(engineid == ''){
+    if (engineid == '') {
         res.send('')
         return
     }
@@ -373,7 +372,7 @@ app.get('/api/stages', function (req, res) {
 
 app.get('/api/environments', function (req, res) {
     var engineid = req.query.engine_id
-    if(engineid == ''){
+    if (engineid == '') {
         res.send('')
         return
     }
