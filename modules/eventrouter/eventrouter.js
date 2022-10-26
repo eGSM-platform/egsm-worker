@@ -1,7 +1,7 @@
 var xml2js = require('xml2js');
 
-var mqtt = require("./mqttconnector")
-var LOG = require('../auxiliary/LogManager')
+var mqtt = require("../egsm-common/communication/mqttconnector")
+var LOG = require('../egsm-common/auxiliary/logManager')
 
 module.id = "EVENTR"
 

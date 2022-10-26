@@ -6,10 +6,10 @@ var app = express();
 const axios = require('axios').default;
 const path = require('path');
 
-var aux = require("../modules/auxiliary/auxiliary");
+var aux = require("../modules/egsm-common/auxiliary/auxiliary");
 var event_router = require('../modules/eventrouter/eventrouter')
-var mqtt = require('../modules/eventrouter/mqttconnector')
-var LOG = require('../modules/auxiliary/LogManager');
+var mqtt = require('../modules/egsm-common/communication/mqttconnector')
+var LOG = require('../modules/egsm-common/auxiliary/logManager');
 const egsmengine = require('../modules/egsmengine/egsmengine');
 
 app.use(express.static(__dirname + '/public'));

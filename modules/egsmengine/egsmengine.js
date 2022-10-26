@@ -2,8 +2,8 @@
 
 // dependencies
 var xml2js = require('xml2js');
-var EventManager = require('../auxiliary/EventManager');
-var LogManager = require("../auxiliary/LogManager")
+var EventManager = require('../egsm-common/auxiliary/eventManager');
+var LogManager = require("../egsm-common/auxiliary/logManager")
 var fs = require('fs');
 const eventrouter = require('../eventrouter/eventrouter');
 
