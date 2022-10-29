@@ -8,7 +8,7 @@ var fs = require('fs');
 const eventrouter = require('../eventrouter/eventrouter');
 
 //===============================================================DATA STRUCTURES BEGIN=========================================================================
-
+var MAX_ENGINES = 10
 var ENGINES = new Map();
 
 function Engine(id) {
@@ -961,6 +961,13 @@ function startEngine(engineid, xsdInfoModel, xmlProcessModel) {
 }
 
 module.exports = {
+    hasFreeSlot: function(){
+        if(ENGINES.size < MAX_ENGINES){
+            return true
+        }
+        return false
+    },
+
     getDataArray: function (engineid) {
         return ""//ENGINES.get(engineid).Data_array
     },

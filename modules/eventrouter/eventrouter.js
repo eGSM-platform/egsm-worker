@@ -115,7 +115,7 @@ function onMessageReceived(hostname, port, topic, message) {
     LOG.logWorker('DEBUG', `onMessageReceived called`, module.id)
     var key = [hostname, port, topic].join(":")
     if (!SUBSCRIPTIONS.has(key)) {
-        LOG.logWorker('WARNING', `Message received without any subscriber [${hostname}:${port}] :: [${topic}] -> ${message}`, module.id)
+        LOG.logWorker('DEBUG', `Message received without any subscriber [${hostname}:${port}] :: [${topic}] -> ${message}`, module.id)
         return;
     }
 
