@@ -8,7 +8,7 @@ var fs = require('fs');
 const eventrouter = require('../eventrouter/eventrouter');
 
 //===============================================================DATA STRUCTURES BEGIN=========================================================================
-var MAX_ENGINES = 10
+var MAX_ENGINES = 100
 var ENGINES = new Map();
 
 function Engine(id) {
@@ -961,11 +961,62 @@ function startEngine(engineid, xsdInfoModel, xmlProcessModel) {
 }
 
 module.exports = {
-    hasFreeSlot: function(){
-        if(ENGINES.size < MAX_ENGINES){
+    hasFreeSlot: function () {
+        if (ENGINES.size < MAX_ENGINES) {
             return true
         }
         return false
+    },
+
+    getCapacity: function () {
+        return MAX_ENGINES
+    },
+
+    getEngineNumber: function () {
+        return ENGINES.size
+    },
+
+    /*
+    export interface EngineElement {
+  index: Number,
+  name: string;
+  type: string,
+  perspective: string,
+  uptime: string,
+  status: string
+}*/
+    getEngineList: function () {
+        var result = []
+
+        for (let [key, value] of ENGINES) {
+            result.push({
+                name: key,
+                type: "TODO",
+                perspective: "TODO",
+                uptime: "TODO",
+                status: "TODO"
+            })
+        }
+        //Sorting the engines based on their name and adding index
+        result.sort((a, b) => {
+            const nameA = a.name.toUpperCase(); // ignore upper and lowercase
+            const nameB = b.name.toUpperCase(); // ignore upper and lowercase
+            if (nameA < nameB) {
+                return -1;
+            }
+            if (nameA > nameB) {
+                return 1;
+            }
+
+            // names must be equal
+            return 0;
+        });
+        var cnt = 1
+        result.forEach(element => {
+            element['index'] = cnt
+            cnt++
+        });
+        return result
     },
 
     getDataArray: function (engineid) {
@@ -1119,10 +1170,6 @@ module.exports = {
             return "not_defined"
         }
         return ENGINES.get(engineid).updateInfoModel(name, value)
-    },
-
-    getEngineNumber: function () {
-        return ENGINES.length;
     },
 
     notifyEngine: function (engineid, name, value) {

@@ -9,7 +9,7 @@ const path = require('path');
 var egsmengine = require('../egsmengine/egsmengine');
 
 var LOCAL_HOST_NAME = 'localhost' //TODO: retrieve it properly
-var LOCAL_HTTP_PORT = 8086
+var LOCAL_HTTP_PORT = 8090
 
 //Setting up storage for file posting
 const storage = multer.memoryStorage({
@@ -107,13 +107,13 @@ app.get('/api/externals', function (req, res) {
 });
 
 app.get('*', function (req, res) {
-    res.sendFile('index.html', { root: path.join(__dirname, '/public') });
+    res.sendFile('index.html', { root: path.join(__dirname, 'public') });
 });
 
 
-const rest_api = app.listen(LOCAL_HTTP_PORT, () => {
-    LOG.logWorker(`DEBUG`, `Worker listening on port ${LOCAL_HTTP_PORT}`, module.id)
-})
+//const rest_api = app.listen(LOCAL_HTTP_PORT, () => {
+//    LOG.logWorker(`DEBUG`, `Worker listening on port ${LOCAL_HTTP_PORT}`, module.id)
+//})
 
 process.on('SIGINT', () => {
     rest_api.close(() => {

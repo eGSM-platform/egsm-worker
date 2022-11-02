@@ -55,7 +55,13 @@ function onMessageReceived(hostname, port, topic, message) {
                     request_id: msgJson['request_id'],
                     message_type: 'PONG',
                     sender_id: TOPIC_SELF,
-                    payload: ROUTES.getRESTCredentials()
+                    payload: {
+                        hostname: ROUTES.getRESTCredentials()['hostname'],
+                        port: ROUTES.getRESTCredentials()['port'],
+                        uptime: process.uptime(),
+                        capacity: egsmengine.getCapacity(),
+                        engine_mumber: egsmengine.getEngineNumber()
+                    }
                 }
                 MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
                 break;
@@ -65,7 +71,7 @@ function onMessageReceived(hostname, port, topic, message) {
                         request_id: msgJson['request_id'],
                         message_type: 'SEARCH',
                         sender_id: TOPIC_SELF,
-                        payload: {rest_api: ROUTES.getRESTCredentials()}
+                        payload: { rest_api: ROUTES.getRESTCredentials() }
                     }
                     MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
                 }
@@ -96,6 +102,15 @@ function onMessageReceived(hostname, port, topic, message) {
                 message_type: 'NEW_ENGINE'
             }
             MQTT.publishTopic(MQTT_HOST, MQTT_PORT, TOPIC_SELF, JSON.stringify(response))
+        }
+        else if (msgJson['message_type'] == 'GET_ENGINE_LIST') {
+            var resPayload = egsmengine.getEngineList()
+            var response = {
+                request_id: msgJson['request_id'],
+                payload: resPayload,
+                message_type: 'GET_ENGINE_LIST_RESP'
+            }
+            MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
         }
     }
     else {
@@ -210,7 +225,7 @@ async function initPrimaryBrokerConnection(broker) {
 
     //Find an unused, unique ID for the Engine
     while (true) {
-        TOPIC_SELF = 'random-candidate'//UUID.v4();
+        TOPIC_SELF = UUID.v4();
         MQTT.subscribeTopic(MQTT_HOST, MQTT_PORT, TOPIC_SELF)
         var result = await checkIdCandidate(TOPIC_SELF)
         console.log(result)
