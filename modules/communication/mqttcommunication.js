@@ -76,6 +76,15 @@ function onMessageReceived(hostname, port, topic, message) {
                     MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
                 }
                 break;
+            case 'PROCESS_SEARCH':
+                var response = {
+                    request_id: msgJson['request_id'],
+                    message_type: 'PROCESS_SEARCH_RESP',
+                    sender_id: TOPIC_SELF,
+                    payload: { engines: egsmengine.getEnginesOfProcess(msgJson['payload']['process_id']) }
+                }
+                MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
+                break;
         }
     }
     else if (topic == TOPIC_SELF) {

@@ -8,11 +8,18 @@ var fs = require('fs');
 const eventrouter = require('../eventrouter/eventrouter');
 
 //===============================================================DATA STRUCTURES BEGIN=========================================================================
-var MAX_ENGINES = 100
+var MAX_ENGINES = 200
 var ENGINES = new Map();
 
 function Engine(id) {
-    var engineid = id;
+    const engineid = id; //Engine ID structure must be: <PROCESS_TYPE>__<INSTANCE_ID>__<PERSPECTIVE> (e.g.: "TRANSPORTATION__instance_1__Truck")
+    const elements = id.split('__')
+    const process_type = elements[0]
+    const process_instance = elements[1]
+    const process_perspective = elements[2]
+    const startTime = new Date().getTime() / 1000 / 60
+    var runningStatus = "running"
+
     // initialize arrays containing process model elements
     var Data_array = {};        //data flow guards, process flow guards, fault loggers and milestones
     var Stage_array = {};       //stages
@@ -222,6 +229,13 @@ function Engine(id) {
 
     //Exposed Engine functions
     return {
+        engineid: engineid,
+        process_type: process_type,
+        process_instance: process_instance,
+        process_perspective: process_perspective,
+        startTime: startTime,
+        runningStatus: runningStatus,
+
         Data_array: Data_array,
         Stage_array: Stage_array,
         Info_array: Info_array,
@@ -976,6 +990,17 @@ module.exports = {
         return ENGINES.size
     },
 
+    getEngineDetails: function (engineid) {
+        return {
+            name: engineid,
+            type: ENGINES.get(engineid).process_type,
+            instance_id: ENGINES.get(engineid).process_instance,
+            perspective: ENGINES.get(engineid).process_perspective,
+            uptime: (new Date().getTime() / 1000 / 60 - ENGINES.get(engineid).startTime).toPrecision(2).toString() + " min",
+            status: ENGINES.get(engineid).runningStatus
+        }
+    },
+
     /*
     export interface EngineElement {
   index: Number,
@@ -989,13 +1014,7 @@ module.exports = {
         var result = []
 
         for (let [key, value] of ENGINES) {
-            result.push({
-                name: key,
-                type: "TODO",
-                perspective: "TODO",
-                uptime: "TODO",
-                status: "TODO"
-            })
+            result.push(this.getEngineDetails(key))
         }
         //Sorting the engines based on their name and adding index
         result.sort((a, b) => {
@@ -1033,6 +1052,16 @@ module.exports = {
     //returns true if an engine with the provided id exists
     exists: function (engineid) {
         return ENGINES.has(engineid)
+    },
+
+    getEnginesOfProcess(process_instance_id) {
+        var result = []
+        for (let [key, value] of ENGINES) {
+            if (ENGINES.get(key).process_instance == process_instance_id) {
+                result.push(this.getEngineDetails(key))
+            }
+        }
+        return result
     },
 
     getDebugLog: function (engineid) {
