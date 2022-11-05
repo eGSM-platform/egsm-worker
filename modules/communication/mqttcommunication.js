@@ -76,12 +76,40 @@ function onMessageReceived(hostname, port, topic, message) {
                     MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
                 }
                 break;
+            case 'GET_COMPLETE_DIAGRAM':
+                if (egsmengine.exists(msgJson['payload']['engine_id'])) {
+                    var response = {
+                        request_id: msgJson['request_id'],
+                        message_type: 'GET_COMPLETE_DIAGRAM_RESP',
+                        sender_id: TOPIC_SELF,
+                        payload: { result: egsmengine.getCompleteDiagram(msgJson['payload']['engine_id']) }
+                    }
+                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
+                }
+                break;
+            case 'GET_COMPLETE_NODE_DIAGARM':
+                if (egsmengine.exists(msgJson['payload']['engine_id'])) {
+                    var response = {
+                        request_id: msgJson['request_id'],
+                        message_type: 'GET_COMPLETE_NODE_DIAGARM_RESP',
+                        sender_id: TOPIC_SELF,
+                        payload: { result: egsmengine.getCompleteNodeDiagram(msgJson['payload']['engine_id']) }
+                    }
+                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
+                }
+                break;
             case 'PROCESS_SEARCH':
+                var engines = egsmengine.getEnginesOfProcess(msgJson['payload']['process_id'])
+                var api = ROUTES.getRESTCredentials()
+                engines.forEach(element => {
+                    element['worker_host'] = api.hostname
+                    element['worker_api_port'] = api.port
+                });
                 var response = {
                     request_id: msgJson['request_id'],
                     message_type: 'PROCESS_SEARCH_RESP',
                     sender_id: TOPIC_SELF,
-                    payload: { engines: egsmengine.getEnginesOfProcess(msgJson['payload']['process_id']) }
+                    payload: { engines: engines }
                 }
                 MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
                 break;
@@ -114,6 +142,12 @@ function onMessageReceived(hostname, port, topic, message) {
         }
         else if (msgJson['message_type'] == 'GET_ENGINE_LIST') {
             var resPayload = egsmengine.getEngineList()
+            var api = ROUTES.getRESTCredentials()
+            resPayload.forEach(element => {
+                element['worker_host'] = api.hostname
+                element['worker_api_port'] = api.port
+            });
+        
             var response = {
                 request_id: msgJson['request_id'],
                 payload: resPayload,

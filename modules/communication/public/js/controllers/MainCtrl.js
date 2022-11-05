@@ -1,5 +1,12 @@
 angular.module('MainCtrl', []).controller('MainController', function ($scope, $http, $window, $interval) {
 
+	const queryString = window.location.search;
+	if(queryString.length > 0){
+	  const urlParams = new URLSearchParams(queryString);
+	  document.getElementById("engine_id_textbox").value = urlParams.get('engine_id');
+	  $scope.engineId = urlParams.get('engine_id')
+	}
+	
 	$scope.tagline = 1;//'To the moon and back!';
 
 	$interval(function () {

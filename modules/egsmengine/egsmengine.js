@@ -6,6 +6,7 @@ var EventManager = require('../egsm-common/auxiliary/eventManager');
 var LogManager = require("../egsm-common/auxiliary/logManager")
 var fs = require('fs');
 const eventrouter = require('../eventrouter/eventrouter');
+var ROUTES = require('../communication/routes')
 
 //===============================================================DATA STRUCTURES BEGIN=========================================================================
 var MAX_ENGINES = 200
