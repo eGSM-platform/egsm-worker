@@ -1,12 +1,8 @@
-// E-GSM engine main module
-
-// dependencies
 var xml2js = require('xml2js');
+
+const EVENTR = require('../eventrouter/eventrouter');
 var EventManager = require('../egsm-common/auxiliary/eventManager');
-var LogManager = require("../egsm-common/auxiliary/logManager")
-var fs = require('fs');
-const eventrouter = require('../eventrouter/eventrouter');
-var ROUTES = require('../communication/routes')
+var LOG = require("../egsm-common/auxiliary/logManager")
 
 //===============================================================DATA STRUCTURES BEGIN=========================================================================
 var MAX_ENGINES = 200
@@ -86,19 +82,18 @@ function Engine(id) {
 
     var updateInfoModel = function (name, value) {
         console.log(`update model: ${name}->${value}`)
-        if (!passive) {
-            var attrs = [];
-            if (value != undefined && value != '') {
-                attrs = [];
-                attrs[0] = new Object();
-                attrs[0].name = 'status';
-                attrs[0].value = value;
-                this.Info_array[name].changeAttributes(attrs);
-            }
-            else {
-                this.Info_array[name].changeAttributes(attrs);
-            }
+        var attrs = [];
+        if (value != undefined && value != '') {
+            attrs = [];
+            attrs[0] = new Object();
+            attrs[0].name = 'status';
+            attrs[0].value = value;
+            this.Info_array[name].changeAttributes(attrs);
         }
+        else {
+            this.Info_array[name].changeAttributes(attrs);
+        }
+
     }
 
     // E-GSM process instance: used to evaluate expressions and PAC rules
@@ -489,7 +484,7 @@ var STAGE = {
             state: this.state,
             compliance: this.compliance,
         }
-        eventrouter.publishLogEvent('stage', this.engineid, JSON.stringify(eventJson))
+        EVENTR.publishLogEvent('stage', this.engineid, JSON.stringify(eventJson))
     },
 
     changeState: function (newState) {
@@ -954,18 +949,10 @@ var PARSER = {
     },
 }
 
-var passive = false;
-
-//===============================================================DATA STRUCTURES END===========================================================================
-
-//===============================================================EXPOSED FUNCTIONS BEGIN=======================================================================
-
-//===============================================================EXPOSED FUNCTIONS END=========================================================================
 
 function startEngine(engineid, xsdInfoModel, xmlProcessModel) {
     var parseString = xml2js.parseString;
     parseString(xmlProcessModel, function (err, result) {
-        //TODO: add exception handling
         var processModel = result;
         parseString(xsdInfoModel, function (err, result) {
             var infoModel = result;
@@ -976,6 +963,10 @@ function startEngine(engineid, xsdInfoModel, xmlProcessModel) {
 }
 
 module.exports = {
+    /**
+     * Has free Engine slot in the module
+     * @returns Returns true if yes, false otherwise
+     */
     hasFreeSlot: function () {
         if (ENGINES.size < MAX_ENGINES) {
             return true
@@ -983,34 +974,45 @@ module.exports = {
         return false
     },
 
+    /**
+     * Gets the number of how many Engines can the module accomodate
+     * @returns Number of max engines
+     */
     getCapacity: function () {
         return MAX_ENGINES
     },
 
+    /**
+     * 
+     * @returns Current number of Engines in the module
+     */
     getEngineNumber: function () {
         return ENGINES.size
     },
 
+    /**
+     * Get details of one Engine instance
+     * @param {*} engineid Engine instance ID
+     * @returns Engine Details object. If the Engine with the provided ID is not exists then it will return with an empty object
+     */
     getEngineDetails: function (engineid) {
-        return {
-            name: engineid,
-            type: ENGINES.get(engineid).process_type,
-            instance_id: ENGINES.get(engineid).process_instance,
-            perspective: ENGINES.get(engineid).process_perspective,
-            uptime: (new Date().getTime() / 1000 / 60 - ENGINES.get(engineid).startTime).toPrecision(2).toString() + " min",
-            status: ENGINES.get(engineid).runningStatus
+        if (ENGINES.has(engineid)) {
+            return {
+                name: engineid,
+                type: ENGINES.get(engineid).process_type,
+                instance_id: ENGINES.get(engineid).process_instance,
+                perspective: ENGINES.get(engineid).process_perspective,
+                uptime: (new Date().getTime() / 1000 / 60 - ENGINES.get(engineid).startTime).toPrecision(2).toString() + " min",
+                status: ENGINES.get(engineid).runningStatus
+            }
         }
+        return {}
     },
 
-    /*
-    export interface EngineElement {
-  index: Number,
-  name: string;
-  type: string,
-  perspective: string,
-  uptime: string,
-  status: string
-}*/
+    /**
+     * Get the list of Engines in the module
+     * @returns List of Engines with their important details
+     */
     getEngineList: function () {
         var result = []
 
@@ -1039,22 +1041,20 @@ module.exports = {
         return result
     },
 
-    getDataArray: function (engineid) {
-        return ""//ENGINES.get(engineid).Data_array
-    },
-    getStageArray: function (engineid) {
-        return ""//ENGINES.get(engineid).Stage_array
-    },
-
-    setEventRouter: function (publishfunction) {
-        SUBSCRIBE = publishfunction
-    },
-
-    //returns true if an engine with the provided id exists
+    /**
+     * 
+     * @param {String} engineid 
+     * @returns Returns True of the engine with the provided ID exists, false otherwise
+     */
     exists: function (engineid) {
         return ENGINES.has(engineid)
     },
 
+    /**
+     * Returns the engines which are part of the process specified by its ID
+     * @param {String} process_instance_id 
+     * @returns An array of engines (and their details). If no Engine instance is the part of the Process then it returns and empty array
+     */
     getEnginesOfProcess(process_instance_id) {
         var result = []
         for (let [key, value] of ENGINES) {
@@ -1065,11 +1065,21 @@ module.exports = {
         return result
     },
 
-    getDebugLog: function (engineid) {
-        //TODO
-        return ''
+    /**
+     * Sets the event router the module use
+     * @param {*} publishfunction Reference to the publisher function of the Event Router
+     */
+    setEventRouter: function (publishfunction) {
+        SUBSCRIBE = publishfunction
     },
 
+    /**
+     * Creates a new Engine based on the provided attributes
+     * @param {*} engineid 
+     * @param {*} informalModel 
+     * @param {*} processModel 
+     * @returns 'created' if the operation was successfull, "already_exists" if the ID is already used
+     */
     createNewEngine: async function (engineid, informalModel, processModel) {
         if (ENGINES.has(engineid)) {
             return "already_exists"
@@ -1078,7 +1088,7 @@ module.exports = {
         console.log("New Engine created")
         startEngine(engineid, informalModel, processModel)
         //Notify Aggregators about the new Engine Instance
-        eventrouter.publishLifeCycleEvent(engineid, 'created')
+        EVENTR.publishLifeCycleEvent(engineid, 'created')
         return 'created'
     },
 
@@ -1088,7 +1098,7 @@ module.exports = {
         }
         ENGINES.delete(engineid)
         //Notify Aggregators about deleting the Engine
-        eventrouter.publishLifeCycleEvent(engineid, 'deleted')
+        EVENTR.publishLifeCycleEvent(engineid, 'deleted')
         return 'removed'
     },
 
@@ -1100,6 +1110,21 @@ module.exports = {
         return 'resetted'
     },
 
+    /**
+     * Notify engine about Info Model change. Used by Event Router
+     * @param {*} engineid 
+     * @param {*} name Name of Info Model Entry
+     * @param {*} value New value of the changed parameter 
+     * @returns 
+     */
+    updateInfoModel: function (engineid, name, value) {
+        if (!ENGINES.has(engineid)) {
+            return "not_defined"
+        }
+        return ENGINES.get(engineid).updateInfoModel(name, value)
+    },
+
+    // FRONT-END SUPPORT FUNCTIONS BEGIN
     // create JSON to represent model in UI
     getCompleteDiagram: function (engineid) {
         //build json model for GUI
@@ -1194,16 +1219,19 @@ module.exports = {
         }
         return json_model;
     },
+    // FRONT-END SUPPORT FUNCTIONS END
 
-    updateInfoModel: function (engineid, name, value) {
-        if (!ENGINES.has(engineid)) {
-            return "not_defined"
-        }
-        return ENGINES.get(engineid).updateInfoModel(name, value)
+    //DEPRECHATED FUNCTIONS BEGIN, KEPT FOR BACKWARD COMPATIBILITY
+    getDataArray: function (engineid) {
+        return ""//ENGINES.get(engineid).Data_array
+    },
+    getStageArray: function (engineid) {
+        return ""//ENGINES.get(engineid).Stage_array
     },
 
-    notifyEngine: function (engineid, name, value) {
-        ENGINES.get(engineid).updateInfoModel(name, value)
-    }
-
+    getDebugLog: function (engineid) {
+        //TODO
+        return ''
+    },
+    //DEPRECHATED FUNCTIONS END, KEPT FOR BACKWARD COMPATIBILITY
 }

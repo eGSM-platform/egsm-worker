@@ -2,16 +2,16 @@ var UUID = require("uuid");
 
 var MQTT = require("../egsm-common/communication/mqttconnector")
 var LOG = require('../egsm-common/auxiliary/logManager')
-var PRIM = require('../egsm-common/auxiliary/primitives')
 var AUX = require('../egsm-common/auxiliary/auxiliary')
 var ROUTES = require('../communication/routes')
 
-var egsmengine = require('../egsmengine/egsmengine');
-var event_router = require('../eventrouter/eventrouter')
+var EGSM_ENGINE = require('../egsmengine/egsmengine');
+var EVENT_ROUTER = require('../eventrouter/eventrouter')
 
 module.id = "MQTTCOMM"
 
-const ID_VERIFICATION_PERIOD = 2500
+const ID_VERIFICATION_PERIOD = 1500 //Time the other Workers has to reply if their ID is identical with the one the local worker wants to use
+
 //Topic definitions
 const SUPERVISOR_TOPIC_IN = 'supervisor_woker_in'
 const SUPERVISOR_TOPIC_OUT = 'supervisor_worker_out'
@@ -31,17 +31,33 @@ var REQUEST_PROMISES = new Map()
 -request_id: <string> (optional if no response expected)
 -payload: <string>
 */
+/**
+ * MQTT Message handler of the module. Handles all messages from the Supervisor and other Workers 
+ * @param {*} hostname 
+ * @param {*} port 
+ * @param {*} topic 
+ * @param {*} message 
+ * @returns 
+ */
 function onMessageReceived(hostname, port, topic, message) {
-    console.log('new message')
+    LOG.logWorker('DEBUG', `New message received from topic: ${topic}`, module.id)
     if ((hostname != MQTT_HOST || port != MQTT_PORT) || (topic != SUPERVISOR_TOPIC_OUT && topic != TOPIC_SELF)) {
+        LOG.logWorker('DEBUG', `Reveived message is not intended to handle here`, module.id)
         return
     }
-    console.log('new message1')
-    var msgJson = JSON.parse(message.toString())
+    try {
+        var msgJson = JSON.parse(message.toString())
+    } catch (e) {
+        LOG.logWorker('ERROR', `Error while parsing mqtt message: ${message}`, module.id)
+        return
+    }
+    //The message has been published by the supervisor to the shared SUPERVISOR_TOPIC_OUT
+    //These messages have been delived to all other workers too
     if (topic == SUPERVISOR_TOPIC_OUT) {
         switch (msgJson['message_type']) {
             case 'NEW_ENGINE_SLOT':
-                if (egsmengine.hasFreeSlot()) {
+                LOG.logWorker('DEBUG', `NEW_ENGINE_SLOT requested`, module.id)
+                if (EGSM_ENGINE.hasFreeSlot()) {
                     var response = {
                         request_id: msgJson['request_id'],
                         message_type: 'NEW_ENGINE_SLOT_RESP',
@@ -51,6 +67,7 @@ function onMessageReceived(hostname, port, topic, message) {
                 }
                 break;
             case 'PING':
+                LOG.logWorker('DEBUG', `PING requested`, module.id)
                 var response = {
                     request_id: msgJson['request_id'],
                     message_type: 'PONG',
@@ -59,14 +76,15 @@ function onMessageReceived(hostname, port, topic, message) {
                         hostname: ROUTES.getRESTCredentials()['hostname'],
                         port: ROUTES.getRESTCredentials()['port'],
                         uptime: process.uptime(),
-                        capacity: egsmengine.getCapacity(),
-                        engine_mumber: egsmengine.getEngineNumber()
+                        capacity: EGSM_ENGINE.getCapacity(),
+                        engine_mumber: EGSM_ENGINE.getEngineNumber()
                     }
                 }
                 MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
                 break;
             case 'SEARCH':
-                if (egsmengine.exists(msgJson['payload']['engine_id'])) {
+                LOG.logWorker('DEBUG', `SEARCH requested for ${msgJson['payload']['engine_id']}`, module.id)
+                if (EGSM_ENGINE.exists(msgJson['payload']['engine_id'])) {
                     var response = {
                         request_id: msgJson['request_id'],
                         message_type: 'SEARCH',
@@ -77,29 +95,32 @@ function onMessageReceived(hostname, port, topic, message) {
                 }
                 break;
             case 'GET_COMPLETE_DIAGRAM':
-                if (egsmengine.exists(msgJson['payload']['engine_id'])) {
+                LOG.logWorker('DEBUG', `GET_COMPLETE_DIAGRAM requested for ${msgJson['payload']['engine_id']}`, module.id)
+                if (EGSM_ENGINE.exists(msgJson['payload']['engine_id'])) {
                     var response = {
                         request_id: msgJson['request_id'],
                         message_type: 'GET_COMPLETE_DIAGRAM_RESP',
                         sender_id: TOPIC_SELF,
-                        payload: { result: egsmengine.getCompleteDiagram(msgJson['payload']['engine_id']) }
+                        payload: { result: EGSM_ENGINE.getCompleteDiagram(msgJson['payload']['engine_id']) }
                     }
                     MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
                 }
                 break;
             case 'GET_COMPLETE_NODE_DIAGARM':
-                if (egsmengine.exists(msgJson['payload']['engine_id'])) {
+                LOG.logWorker('DEBUG', `GET_COMPLETE_NODE_DIAGARM requested for ${msgJson['payload']['engine_id']}`, module.id)
+                if (EGSM_ENGINE.exists(msgJson['payload']['engine_id'])) {
                     var response = {
                         request_id: msgJson['request_id'],
                         message_type: 'GET_COMPLETE_NODE_DIAGARM_RESP',
                         sender_id: TOPIC_SELF,
-                        payload: { result: egsmengine.getCompleteNodeDiagram(msgJson['payload']['engine_id']) }
+                        payload: { result: EGSM_ENGINE.getCompleteNodeDiagram(msgJson['payload']['engine_id']) }
                     }
                     MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
                 }
                 break;
             case 'PROCESS_SEARCH':
-                var engines = egsmengine.getEnginesOfProcess(msgJson['payload']['process_id'])
+                LOG.logWorker('DEBUG', `PROCESS_SEARCH requested for ${msgJson['payload']['process_id']}`, module.id)
+                var engines = EGSM_ENGINE.getEnginesOfProcess(msgJson['payload']['process_id'])
                 var api = ROUTES.getRESTCredentials()
                 engines.forEach(element => {
                     element['worker_host'] = api.hostname
@@ -115,58 +136,67 @@ function onMessageReceived(hostname, port, topic, message) {
                 break;
         }
     }
-    else if (topic == TOPIC_SELF) {
-        console.log('self')
-        if (msgJson['message_type'] == 'PONG') {
-            if (REQUEST_PROMISES.has(msgJson['request_id'])) {
-                REQUEST_PROMISES.get(msgJson['request_id'])('not_ok')
-                REQUEST_PROMISES.delete(msgJson['request_id'])
-            }
-        }
-        else if (msgJson['message_type'] == 'PING') {
-            var response = {
-                request_id: msgJson['request_id'],
-                message_type: 'PONG'
-            }
-            MQTT.publishTopic(MQTT_HOST, MQTT_PORT, TOPIC_SELF, JSON.stringify(response))
-            console.log('published')
-        }
-        else if (msgJson['message_type'] == 'NEW_ENGINE') {
-            var resPayload = createNewEngine(msgJson['payload'])
-            var response = {
-                request_id: msgJson['request_id'],
-                payload: resPayload,
-                message_type: 'NEW_ENGINE'
-            }
-            MQTT.publishTopic(MQTT_HOST, MQTT_PORT, TOPIC_SELF, JSON.stringify(response))
-        }
-        else if (msgJson['message_type'] == 'GET_ENGINE_LIST') {
-            var resPayload = egsmengine.getEngineList()
-            var api = ROUTES.getRESTCredentials()
-            resPayload.forEach(element => {
-                element['worker_host'] = api.hostname
-                element['worker_api_port'] = api.port
-            });
-        
-            var response = {
-                request_id: msgJson['request_id'],
-                payload: resPayload,
-                message_type: 'GET_ENGINE_LIST_RESP'
-            }
-            MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
-        }
-    }
-    else {
 
+    //These messages were sent by the Supervisor or by another Workers and only this Worker is receiveing it
+    else if (topic == TOPIC_SELF) {
+        switch (msgJson['message_type']) {
+            case 'PONG':
+                LOG.logWorker('DEBUG', `PONG received`, module.id)
+                if (REQUEST_PROMISES.has(msgJson['request_id'])) {
+                    REQUEST_PROMISES.get(msgJson['request_id'])('not_ok')
+                    REQUEST_PROMISES.delete(msgJson['request_id'])
+                }
+                break;
+            case 'PING':
+                LOG.logWorker('DEBUG', `PING requested`, module.id)
+                var response = {
+                    request_id: msgJson['request_id'],
+                    message_type: 'PONG'
+                }
+                MQTT.publishTopic(MQTT_HOST, MQTT_PORT, TOPIC_SELF, JSON.stringify(response))
+                break;
+            case 'NEW_ENGINE':
+                LOG.logWorker('DEBUG', `NEW_ENGINE requested`, module.id)
+                var resPayload = createNewEngine(msgJson['payload'])
+                var response = {
+                    request_id: msgJson['request_id'],
+                    payload: resPayload,
+                    message_type: 'NEW_ENGINE'
+                }
+                MQTT.publishTopic(MQTT_HOST, MQTT_PORT, TOPIC_SELF, JSON.stringify(response))
+                break;
+            case 'GET_ENGINE_LIST':
+                LOG.logWorker('DEBUG', `GET_ENGINE_LIST requested`, module.id)
+                var resPayload = EGSM_ENGINE.getEngineList()
+                var api = ROUTES.getRESTCredentials()
+                resPayload.forEach(element => {
+                    element['worker_host'] = api.hostname
+                    element['worker_api_port'] = api.port
+                });
+
+                var response = {
+                    request_id: msgJson['request_id'],
+                    payload: resPayload,
+                    message_type: 'GET_ENGINE_LIST_RESP'
+                }
+                MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
+                break;
+        }
     }
 }
 
+/**
+ * Creates a new eGSM engine in the EGSM_ENGINE module
+ * @param {*} payload The received payload in the request which contains all information and files which are necessary to create a new engine instance
+ * @returns SUCCESS or ERROR objects with the appropriate message
+ */
 function createNewEngine(payload) {
     LOG.logWorker('DEBUG', 'New engine creation requested', module.id)
     var responsePayload = {}
+
     //Check once again if the worker can serve one more engine
-    if (!egsmengine.hasFreeSlot()) {
-        LOG.logWorker('DEBUG', 'Request cancelled. Out of free Engine slots', module.id)
+    if (!EGSM_ENGINE.hasFreeSlot()) {
+        LOG.logWorker('WARNING', 'Request cancelled. Out of free Engine slots', module.id)
         return responsePayload['error'] = 'NO_SLOT'
     }
 
@@ -180,7 +210,7 @@ function createNewEngine(payload) {
 
     if (typeof engine_id == "undefined" || typeof mqtt_broker == "undefined" || mqtt_broker == "undefined" || typeof mqtt_port == "undefined"
         || typeof mqtt_user == "undefined" || typeof mqtt_password == "undefined") {
-        LOG.logWorker('DEBUG', 'Request cancelled. Argument(s) are missing', module.id)
+        LOG.logWorker('WARNING', 'Engine creation request cancelled. Argument(s) are missing', module.id)
         return responsePayload['error'] = 'ARGUMENT_MISSING'
     }
 
@@ -190,21 +220,21 @@ function createNewEngine(payload) {
     var eventRouterConfig = payload.event_router_config;
 
     if (typeof informalModel == 'undefined' || typeof processModel == 'undefined' || typeof eventRouterConfig == 'undefined') {
-        LOG.logWorker('DEBUG', 'Request cancelled. Necessary files have not received, process cannot be initiated!', module.id)
+        LOG.logWorker('WARNING', 'Engine creation request cancelled. Necessary files have not received, process cannot be initiated!', module.id)
         return responsePayload['error'] = 'FILE_MISSING'
     }
 
     //Everything is provided, creating new engine
 
     //Check if there is any engine with the same engine id
-    if (egsmengine.exists(engine_id)) {
+    if (EGSM_ENGINE.exists(engine_id)) {
         LOG.logWorker('WARNING', `Engine with id [${engine_id}] is already exists, could not created again`, module.id)
         return responsePayload['error'] = 'ENGINE_ID_CONFLICT'
     }
     //Check if the broker connection exists and create it is if not
     var result = MQTT.createConnection(mqtt_broker, mqtt_port, mqtt_user, mqtt_password, 'ntstmqtt_' + Math.random().toString(16).substr(2, 8));
     if (!result) {
-        LOG.logWorker('DEBUG', 'Error while creating connection', module.id)
+        LOG.logWorker('WARNING', 'Error while creating connection', module.id)
         return responsePayload['error'] = 'BROKER_CONN_ERROR'
     }
     if (result == 'created') {
@@ -215,13 +245,13 @@ function createNewEngine(payload) {
     }
 
     //Set up Default Broker for the engine
-    event_router.setEngineDefaults(engine_id, mqtt_broker, mqtt_port, egsmengine.notifyEngine)
+    EVENT_ROUTER.setEngineDefaults(engine_id, mqtt_broker, mqtt_port, EGSM_ENGINE.updateInfoModel)
 
     //Adding Engine to the Event Router
-    event_router.initConnections(engine_id, eventRouterConfig)
+    EVENT_ROUTER.initConnections(engine_id, eventRouterConfig)
 
     //Creating new engine
-    egsmengine.createNewEngine(engine_id, informalModel, processModel).then(
+    EGSM_ENGINE.createNewEngine(engine_id, informalModel, processModel).then(
         function (value) {
             if (value == 'created') {
                 LOG.logWorker('DEBUG', 'New engine created', module.id)
@@ -233,15 +263,23 @@ function createNewEngine(payload) {
             }
         }
     )
-
 }
 
+/**
+ * Wrapper function to execute delay
+ * @param {*} delay Required dely in millis
+ */
 async function wait(delay) {
     await AUX.sleep(delay)
 }
 
+/**
+ * Executes an ID uniqueness verification through cooperating with other Workers 
+ * @param {*} candidate ID candidate to verify uniqueness
+ * @returns A Promise, which becomes 'ok' if the ID was unique 'not_ok' otherwise
+ */
 async function checkIdCandidate(candidate) {
-    var request_id = 'random' //TODO UUID.v4();
+    var request_id = UUID.v4();
     var message = JSON.stringify(
         request_id = request_id,
         message_type = 'PING'
@@ -257,6 +295,11 @@ async function checkIdCandidate(candidate) {
     return promise
 }
 
+/**
+ * Init Broker connection the module will use. It will also find a unique ID for the Worker itself
+ * @param {*} broker Broker credentials
+ * @returns Returns the own ID of the Worker
+ */
 async function initPrimaryBrokerConnection(broker) {
     MQTT_HOST = broker.host
     MQTT_PORT = broker.port
@@ -271,7 +314,6 @@ async function initPrimaryBrokerConnection(broker) {
         TOPIC_SELF = UUID.v4();
         MQTT.subscribeTopic(MQTT_HOST, MQTT_PORT, TOPIC_SELF)
         var result = await checkIdCandidate(TOPIC_SELF)
-        console.log(result)
         if (result == 'ok') {
             break;
         }
@@ -287,4 +329,3 @@ module.exports = {
     checkIdCandidate: checkIdCandidate,
     initPrimaryBrokerConnection: initPrimaryBrokerConnection
 }
-

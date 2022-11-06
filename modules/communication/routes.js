@@ -1,32 +1,21 @@
-const multer = require('multer'); //For receiving files through HTTP POST
 var express = require('express');
-var bodyParser = require('body-parser')
-var jsonParser = bodyParser.json()
 var app = express();
-const axios = require('axios').default;
 const path = require('path');
 
+var LOG = require('../egsm-common/auxiliary/logManager');
 var egsmengine = require('../egsmengine/egsmengine');
+
+module.id = "ROUTES"
 
 var LOCAL_HOST_NAME = 'localhost' //TODO: retrieve it properly
 
+LOG.logWorker('DEBUG', 'Finding a port to open REST API', module.id)
 min = Math.ceil(8000);
 max = Math.floor(60000);
 var LOCAL_HTTP_PORT = Math.floor(Math.random() * (max - min + 1) + min);
-
-//Setting up storage for file posting
-const storage = multer.memoryStorage({
-    destination: function (req, file, callback) {
-        callback(null, "");
-    },
-})
-
-const upload = multer({ storage: storage });
-
-var LOG = require('../egsm-common/auxiliary/logManager');
+LOG.logWorker('DEBUG', `Using port ${LOCAL_HTTP_PORT} to open REST API`, module.id)
 
 app.use(express.static(__dirname + '/public'));
-module.id = "ROUTES"
 
 app.get('/api/config_stages', function (req, res) {
     var engine_id = req.query.engine_id
@@ -48,9 +37,7 @@ app.get('/api/config_stages_diagram', function (req, res) {
     res.status(200).json(egsmengine.getCompleteNodeDiagram(engine_id));
 });
 
-//TODO
 app.get('/api/debugLog', function (req, res) {
-
     var engine_id = req.query.engine_id
     res.json(egsmengine.getDebugLog(engine_id));
 });
@@ -65,7 +52,6 @@ app.get('/api/infomodel', function (req, res) {
     res.status(200).json(egsmengine.getInfoModel(engine_id));
 });
 
-//TODO: This route may not be necessary since Event Router has direct access to the engines
 app.get('/api/updateInfoModel', function (req, res) {
     var engine_id = req.query.engine_id
     var name = req.query['name']
@@ -119,10 +105,10 @@ const rest_api = app.listen(LOCAL_HTTP_PORT, () => {
 })
 
 process.on('SIGINT', () => {
-    /*rest_api.close(() => {
+    rest_api.close(() => {
         LOG.logWorker(`DEBUG`, `Terminating process...`, module.id)
         process.exit()
-    });*/
+    });
 });
 
 module.exports = {
