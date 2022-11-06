@@ -4,3 +4,5 @@ modules/eventrouter/node_modules/
 **/package.json
 **/package-lock.json
 **/log/
+**/node_modules/
+snapshot/*
