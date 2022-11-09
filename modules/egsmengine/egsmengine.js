@@ -5,15 +5,16 @@ var EventManager = require('../egsm-common/auxiliary/eventManager');
 var LOG = require("../egsm-common/auxiliary/logManager")
 
 //===============================================================DATA STRUCTURES BEGIN=========================================================================
-var MAX_ENGINES = 200
+var MAX_ENGINES = 50000
 var ENGINES = new Map();
 
 function Engine(id) {
-    const engineid = id; //Engine ID structure must be: <PROCESS_TYPE>__<INSTANCE_ID>__<PERSPECTIVE> (e.g.: "TRANSPORTATION__instance_1__Truck")
+    const engineid = id; //Engine ID structure must be: <PROCESS_TYPE>/<INSTANCE_ID>__<PERSPECTIVE> (e.g.: "TRANSPORTATION/instance_1__Truck")
     const elements = id.split('__')
-    const process_type = elements[0]
-    const process_instance = elements[1]
-    const process_perspective = elements[2]
+    const elements2 = elements[0].split('/')
+    const process_type = elements2[0]
+    const process_instance = elements2[1]
+    const process_perspective = elements[1]
     const startTime = new Date().getTime() / 1000 / 60
     var runningStatus = "running"
 

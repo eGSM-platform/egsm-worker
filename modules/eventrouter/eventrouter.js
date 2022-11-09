@@ -101,7 +101,7 @@ function publishLogEvent(type, engineid, eventDetailsJson) {
  * @param {string} event created/deleted events 
  */
 function publishLifeCycleEvent(engineid, event) {
-    LOG.logWorker('DEBUG',`Publishing lifecyle event from ${engineid}`, module.id)
+    LOG.logWorker('DEBUG', `Publishing lifecyle event from ${engineid}`, module.id)
     var elements = engineid.split('/')
     mqtt.publishTopic(ENGINES.get(engineid).hostname, ENGINES.get(engineid).port, 'process_lifecycle', JSON.stringify({
         event_type: event,
@@ -240,6 +240,10 @@ module.exports = {
 
     //Init connections for a specified engine based on the provided binding file
     initConnections: function (engineid, bindingfile) {
+        const elements = engineid.split('__')
+        const elements2 = elements[0].split('/')
+        var instance_id = elements2[1]
+
         LOG.logWorker('DEBUG', `initConnections called for ${engineid}`, module.id)
         var parseString = xml2js.parseString;
         return parseString(bindingfile, function (err, result) {
@@ -284,12 +288,12 @@ module.exports = {
             for (var key in stakeHolders) {
                 STAKEHOLDERS.get(engineid).push({
                     name: stakeHolders[key]['$'].name,
-                    instance: stakeHolders[key]['$'].processInstance,
+                    instance: instance_id,
                     host: stakeHolders[key]['$'].broker_host || ENGINES.get(engineid).hostname,
                     port: stakeHolders[key]['$'].port || ENGINES.get(engineid).port
                 })
                 createSubscription(engineid,
-                    stakeHolders[key]['$'].name + '/' + stakeHolders[key]['$'].processInstance,
+                    stakeHolders[key]['$'].name + '/' + instance_id,
                     stakeHolders[key]['$'].broker_host || ENGINES.get(engineid).hostname,
                     stakeHolders[key]['$'].port || ENGINES.get(engineid).port);
             }
