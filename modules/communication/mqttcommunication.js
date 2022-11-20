@@ -60,6 +60,7 @@ function onMessageReceived(hostname, port, topic, message) {
                 if (EGSM_ENGINE.hasFreeSlot()) {
                     var response = {
                         request_id: msgJson['request_id'],
+                        free_slots: EGSM_ENGINE.getCapacity() - EGSM_ENGINE.getEngineNumber(),
                         message_type: 'NEW_ENGINE_SLOT_RESP',
                         sender_id: TOPIC_SELF
                     }
