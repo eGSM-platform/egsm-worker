@@ -135,6 +135,18 @@ function onMessageReceived(hostname, port, topic, message) {
                 }
                 MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
                 break;
+            case 'DELETE_ENGINE':
+                LOG.logWorker('DEBUG', `DELETE_ENGINE requested for ${msgJson['payload']['engine_id']}`, module.id)
+                if (EGSM_ENGINE.exists(msgJson['payload']['engine_id'])) {
+                    var response = {
+                        request_id: msgJson['request_id'],
+                        message_type: 'DELETE_ENGINE_RESP',
+                        sender_id: TOPIC_SELF,
+                        payload: { result: EGSM_ENGINE.removeEngine(msgJson['payload']['engine_id']) }
+                    }
+                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
+                }
+                break;
         }
     }
 
@@ -276,7 +288,7 @@ async function wait(delay) {
 
 /**
  * Executes an ID uniqueness verification through cooperating with other Workers 
- * @param {*} candidate ID candidate to verify uniqueness
+ * @param {string} candidate ID candidate to verify uniqueness
  * @returns A Promise, which becomes 'ok' if the ID was unique 'not_ok' otherwise
  */
 async function checkIdCandidate(candidate) {
