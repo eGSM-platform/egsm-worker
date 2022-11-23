@@ -16,7 +16,7 @@ function Engine(id) {
     const process_instance = elements2[1]
     const process_perspective = elements[1]
     const startTime = new Date().getTime() / 1000 / 60
-    var runningStatus = "running"
+    var lifeCycleStatus = "RUNNING" //RUNNING/FINISHED
 
     // initialize arrays containing process model elements
     var Data_array = {};        //data flow guards, process flow guards, fault loggers and milestones
@@ -231,7 +231,7 @@ function Engine(id) {
         process_instance: process_instance,
         process_perspective: process_perspective,
         startTime: startTime,
-        runningStatus: runningStatus,
+        lifeCycleStatus: lifeCycleStatus,
 
         Data_array: Data_array,
         Stage_array: Stage_array,
@@ -992,6 +992,17 @@ module.exports = {
     },
 
     /**
+     * Updates the lifecycle status (RUNNING/FINISHED) of an engine instance
+     * @param {string} engineid 
+     * @param {string} newstatus 
+     */
+    setEngineLifeCycleStatus(engineid, newstatus) {
+        if (ENGINES.has(engineid)) {
+            ENGINES.get(engineid).lifeCycleStatus = newstatus
+        }
+    },
+
+    /**
      * Get details of one Engine instance
      * @param {*} engineid Engine instance ID
      * @returns Engine Details object. If the Engine with the provided ID is not exists then it will return with an empty object
@@ -1004,7 +1015,7 @@ module.exports = {
                 instance_id: ENGINES.get(engineid).process_instance,
                 perspective: ENGINES.get(engineid).process_perspective,
                 uptime: (new Date().getTime() / 1000 / 60 - ENGINES.get(engineid).startTime).toPrecision(2).toString() + " min",
-                status: ENGINES.get(engineid).runningStatus
+                status: ENGINES.get(engineid).lifeCycleStatus
             }
         }
         return {}
@@ -1100,7 +1111,7 @@ module.exports = {
         ENGINES.delete(engineid)
         //Notify Aggregators about deleting the Engine
         EVENTR.publishLifeCycleEvent(engineid, 'deleted')
-        return 'removed'
+        return 'deleted'
     },
 
     resetEngine: function (engineid) {
