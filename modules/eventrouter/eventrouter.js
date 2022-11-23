@@ -1,3 +1,9 @@
+/**
+ * Module responsible to handle engine-instance-level MQTT communication
+ * It handles all messages from stakeholders, performs artifact attach/detach operations, forwards messages to engine instances,
+ * and it handles communication with aggregators as well
+ */
+
 var xml2js = require('xml2js');
 
 var mqtt = require("../egsm-common/communication/mqttconnector")
@@ -10,12 +16,18 @@ let SUBSCRIPTIONS = new Map(); //{HOST, PORT, TOPIC}-> [ENGINE_ID]
 let ARTIFACTS = new Map() //ENGINE_ID -> [{ARTIFACT_NAME, BROKER, HOST, BINDING, UNBINDING, ID}]
 let STAKEHOLDERS = new Map() //ENGINE_ID -> [{STAKEHOLDER_NAME, PROCESS_ID, BROKER, HOST}]
 
-//Subscribe an engine specified by its ID to a topic at a specified broker
+/**
+ * Subscribe an engine specified by its ID to a topic at a specified broker
+ * @param {string} engineid 
+ * @param {string} topic 
+ * @param {string} hostname 
+ * @param {int} port 
+ * @returns -
+ */
 function createSubscription(engineid, topic, hostname, port) {
     LOG.logWorker('DEBUG', `createSubscription function called for [${engineid}] to subscribe ${hostname}:${port} -> ${topic}`, module.id)
     var key = [hostname, port, topic].join(":")
 
-    //Add new topic to the map
     if (!SUBSCRIPTIONS.has(key)) {
         SUBSCRIPTIONS.set(key, [])
     }
@@ -33,7 +45,14 @@ function createSubscription(engineid, topic, hostname, port) {
     mqtt.subscribeTopic(hostname, port, topic)
 }
 
-//Delete subscription of a specified engine
+/**
+ * Delete subscription of a specified engine at a specified broker
+ * @param {string} engineid 
+ * @param {string} topic 
+ * @param {string} hostname 
+ * @param {int} port 
+ * @returns -
+ */
 function deleteSubscription(engineid, topic, hostname, port) {
     LOG.logWorker('DEBUG', `deleteSubscription function called for [${engineid}] to unsubscribe ${hostname}:${port} -> ${topic}`, module.id)
     var key = [hostname, port, topic].join(":")
@@ -79,6 +98,12 @@ function deleteSubscription(engineid, topic, hostname, port) {
     -<state>
     -<compliance>
 */
+/**
+ * Publishing logs from engines to the primary broker of the engine
+ * @param {string} type 
+ * @param {string} engineid 
+ * @param {string} eventDetailsJson 
+ */
 function publishLogEvent(type, engineid, eventDetailsJson) {
     var topic = engineid
     switch (type) {
@@ -96,7 +121,7 @@ function publishLogEvent(type, engineid, eventDetailsJson) {
 }
 
 /**
- * Function to notify Aggregators through 'process_lifecycle' topic about the instatiation of a new process
+ * Function to notify Aggregators through 'process_lifecycle' topic about the instatiation or termination of an engine
  * @param {string} engineid Engine ID
  * @param {string} event created/deleted events 
  */
@@ -111,6 +136,16 @@ function publishLifeCycleEvent(engineid, event) {
     }))
 }
 
+/**
+ * Messagehandler function
+ * Called by the MQTT connector in case of new message arrived and will perform the 
+ * necessary subscriptions/unsubscriptions and forward the message to the engine instance too
+ * @param {string} hostname 
+ * @param {int} port 
+ * @param {string} topic 
+ * @param {string} message 
+ * @returns 
+ */
 function onMessageReceived(hostname, port, topic, message) {
     LOG.logWorker('DEBUG', `onMessageReceived called`, module.id)
     var key = [hostname, port, topic].join(":")
@@ -227,118 +262,146 @@ function onMessageReceived(hostname, port, topic, message) {
     }
 }
 
+/**
+ * Set up default broker and onMessageReceived function for a specified engine
+ * @param {string} engineid 
+ * @param {string} hostname 
+ * @param {int} port 
+ * @param {function} onMessageReceived 
+ */
+function setEngineDefaults(engineid, hostname, port, onMessageReceived) {
+    LOG.logWorker('DEBUG', `setDefaultBroker called: ${engineid} -> ${hostname}:${port}`, module.id)
+    ENGINES.set(engineid, { hostname: hostname, port: port, onMessageReceived: onMessageReceived })
+}
+
+/**
+ * Init connections for a specified engine based on the provided binding file
+ * @param {string} engineid 
+ * @param {string} bindingfile 
+ * @returns "ok" if the process was successful, "error" otherwise
+ */
+function initConnections(engineid, bindingfile) {
+    const elements = engineid.split('__')
+    const elements2 = elements[0].split('/')
+    var instance_id = elements2[1]
+
+    LOG.logWorker('DEBUG', `initConnections called for ${engineid}`, module.id)
+    var parseString = xml2js.parseString;
+    return parseString(bindingfile, function (err, result) {
+        if (err) {
+            LOG.logWorker('ERROR', `Error while parsing biding file for ${engineid}: ${err}`, module.id)
+            return 'error'
+        }
+        //Read Artifacts
+        //Check if the engine id is defined in the map as a key
+        if (!ARTIFACTS.has(engineid)) {
+            ARTIFACTS.set(engineid, [])
+        }
+
+        //Iterate through artifacts and add them to the map
+        var ra = result['martifact:definitions']['martifact:mapping'][0]['martifact:artifact'];
+        for (var artifact in ra) {
+            var br = [];
+            for (var aid in ra[artifact]['martifact:bindingEvent']) {
+                br.push(ra[artifact]['martifact:bindingEvent'][aid]['$'].id);
+            }
+            var ur = [];
+            for (var aid in ra[artifact]['martifact:unbindingEvent']) {
+                ur.push(ra[artifact]['martifact:unbindingEvent'][aid]['$'].id);
+            }
+            ARTIFACTS.get(engineid).push({
+                name: ra[artifact]['$'].name, bindingEvents: br,
+                unbindingEvents: ur,
+                host: ra[artifact]['$'].broker_host || ENGINES.get(engineid).hostname,
+                port: ra[artifact]['$'].port || ENGINES.get(engineid).port,
+                id: ''
+            })
+        }
+
+        // Read Stakeholders
+        //Check if the engine id is defined in the map as a key
+        if (!STAKEHOLDERS.has(engineid)) {
+            STAKEHOLDERS.set(engineid, [])
+        }
+
+        //Iterate through stakeholders and add them to the map
+        var stakeHolders = result['martifact:definitions']['martifact:stakeholder'];
+        for (var key in stakeHolders) {
+            STAKEHOLDERS.get(engineid).push({
+                name: stakeHolders[key]['$'].name,
+                instance: instance_id,
+                host: stakeHolders[key]['$'].broker_host || ENGINES.get(engineid).hostname,
+                port: stakeHolders[key]['$'].port || ENGINES.get(engineid).port
+            })
+            createSubscription(engineid,
+                stakeHolders[key]['$'].name + '/' + instance_id,
+                stakeHolders[key]['$'].broker_host || ENGINES.get(engineid).hostname,
+                stakeHolders[key]['$'].port || ENGINES.get(engineid).port);
+        }
+
+        //Subscribe to a special topic to 'open' a communication interfaces for Aggregator Agent(s)
+        createSubscription(engineid, engineid + '/aggregator_gate', stakeHolders[key]['$'].broker_host
+            || ENGINES.get(engineid).hostname, stakeHolders[key]['$'].port || ENGINES.get(engineid).port)
+        return 'ok'
+    })
+}
+
+/**
+ * Makes possible to publish events by engines, which can be used by other engines
+ * @param {string} engineid 
+ * @param {Object} data 
+ */
+function processPublish(engineid, data) {
+    var topic = engineid + '/status'
+    if (SUBSCRIPTIONS.has(topic)) {
+        for (var item in SUBSCRIPTIONS.get(topic)) {
+            var engineidToNotify = SUBSCRIPTIONS.get(topic)[item]
+            ENGINES.get(engineidToNotify).onMessageReceived(ENGINES.get(engineid).hostname, ENGINES.get(engineid).port, topic,
+                { parameters: { name: (JSON.parse(data.toString())).event.payloadData.eventid, value: '' } })
+        }
+    }
+    mqtt.publishTopic(ENGINES.get(engineid).hostname, ENGINES.get(engineid).port, topic, data)
+}
+
+/**
+ * Should be called by the engine instance before termination
+ * The function will unsubscribe from all related topics and remove the process from the module
+ * @param {string} engineid 
+ * @returns "ok" or "not_defined" if the engine is not defined in this module
+ */
+function onEngineStop (engineid) {
+    if (ENGINES.has(engineid)) {
+        var topics = []
+        SUBSCRIPTIONS.forEach(function (value, key) {
+            for (i in value) {
+                if (value[i] == engineid) {
+                    topics.push(key)
+                    break
+                }
+            }
+        })
+        for (i in topics) {
+            var elements = topics[i].split(':')
+            deleteSubscription(engineid, elements[2], elements[0], elements[1])
+        }
+        ENGINES.delete(engineid)
+        return 'ok'
+    }
+    else {
+        return 'not_defined'
+    }
+}
+
+//Adding reference to onMessageReceived to the mqtt module to receive notifications
 mqtt.init(onMessageReceived)
 
 module.exports = {
     publishLifeCycleEvent: publishLifeCycleEvent,
     publishLogEvent: publishLogEvent,
-    //Set up default broker and onMessageReceived function for a specified engine
-    setEngineDefaults: function (engineid, hostname, port, onMessageReceived) {
-        LOG.logWorker('DEBUG', `setDefaultBroker called: ${engineid} -> ${hostname}:${port}`, module.id)
-        ENGINES.set(engineid, { hostname: hostname, port: port, onMessageReceived: onMessageReceived })
-    },
-
-    //Init connections for a specified engine based on the provided binding file
-    initConnections: function (engineid, bindingfile) {
-        const elements = engineid.split('__')
-        const elements2 = elements[0].split('/')
-        var instance_id = elements2[1]
-
-        LOG.logWorker('DEBUG', `initConnections called for ${engineid}`, module.id)
-        var parseString = xml2js.parseString;
-        return parseString(bindingfile, function (err, result) {
-            if (err) {
-                LOG.logWorker('ERROR', `Error while parsing biding file for ${engineid}: ${err}`, module.id)
-                return 'error'
-            }
-            //Read Artifacts
-            //Check if the engine id is defined in the map as a key
-            if (!ARTIFACTS.has(engineid)) {
-                ARTIFACTS.set(engineid, [])
-            }
-
-            //Iterate through artifacts and add them to the map
-            var ra = result['martifact:definitions']['martifact:mapping'][0]['martifact:artifact'];
-            for (var artifact in ra) {
-                var br = [];
-                for (var aid in ra[artifact]['martifact:bindingEvent']) {
-                    br.push(ra[artifact]['martifact:bindingEvent'][aid]['$'].id);
-                }
-                var ur = [];
-                for (var aid in ra[artifact]['martifact:unbindingEvent']) {
-                    ur.push(ra[artifact]['martifact:unbindingEvent'][aid]['$'].id);
-                }
-                ARTIFACTS.get(engineid).push({
-                    name: ra[artifact]['$'].name, bindingEvents: br,
-                    unbindingEvents: ur,
-                    host: ra[artifact]['$'].broker_host || ENGINES.get(engineid).hostname,
-                    port: ra[artifact]['$'].port || ENGINES.get(engineid).port,
-                    id: ''
-                })
-            }
-
-            // Read Stakeholders
-            //Check if the engine id is defined in the map as a key
-            if (!STAKEHOLDERS.has(engineid)) {
-                STAKEHOLDERS.set(engineid, [])
-            }
-
-            //Iterate through stakeholders and add them to the map
-            var stakeHolders = result['martifact:definitions']['martifact:stakeholder'];
-            for (var key in stakeHolders) {
-                STAKEHOLDERS.get(engineid).push({
-                    name: stakeHolders[key]['$'].name,
-                    instance: instance_id,
-                    host: stakeHolders[key]['$'].broker_host || ENGINES.get(engineid).hostname,
-                    port: stakeHolders[key]['$'].port || ENGINES.get(engineid).port
-                })
-                createSubscription(engineid,
-                    stakeHolders[key]['$'].name + '/' + instance_id,
-                    stakeHolders[key]['$'].broker_host || ENGINES.get(engineid).hostname,
-                    stakeHolders[key]['$'].port || ENGINES.get(engineid).port);
-            }
-
-            //Subscribe to a special topic to 'open' a communication interfaces for Aggregator Agent(s)
-            createSubscription(engineid, engineid + '/aggregator_gate', stakeHolders[key]['$'].broker_host
-                || ENGINES.get(engineid).hostname, stakeHolders[key]['$'].port || ENGINES.get(engineid).port)
-            return 'ok'
-        })
-    },
-
-    processPublish: function (engineid, data) {
-        var topic = engineid + '/status'
-        if (SUBSCRIPTIONS.has(topic)) {
-            for (var item in SUBSCRIPTIONS.get(topic)) {
-                var engineidToNotify = SUBSCRIPTIONS.get(topic)[item]
-                ENGINES.get(engineidToNotify).onMessageReceived(ENGINES.get(engineid).hostname, ENGINES.get(engineid).port, topic,
-                    { parameters: { name: (JSON.parse(data.toString())).event.payloadData.eventid, value: '' } })
-            }
-        }
-        mqtt.publishTopic(ENGINES.get(engineid).hostname, ENGINES.get(engineid).port, topic, data)
-    },
-
-    onEngineStop: function (engineid) {
-        if (ENGINES.has(engineid)) {
-            var topics = []
-            SUBSCRIPTIONS.forEach(function (value, key) {
-                for (i in value) {
-                    if (value[i] == engineid) {
-                        topics.push(key)
-                        break
-                    }
-                }
-            })
-            for (i in topics) {
-                var elements = topics[i].split(':')
-                deleteSubscription(engineid, elements[2], elements[0], elements[1])
-            }
-            ENGINES.delete(engineid)
-            return 'ok'
-        }
-        else {
-            return 'not_defined'
-        }
-    },
+    setEngineDefaults: setEngineDefaults,
+    initConnections: initConnections,
+    processPublish: processPublish,
+    onEngineStop: onEngineStop,
 };
 
 

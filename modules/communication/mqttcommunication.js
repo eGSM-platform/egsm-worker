@@ -1,3 +1,8 @@
+/**
+ * Responsible to handle software-level MQTT communication
+ * It handles all communication with the supervisor and performs cooperation with other Worker instances
+ */
+
 var UUID = require("uuid");
 
 var MQTT = require("../egsm-common/communication/mqttconnector")
@@ -31,13 +36,15 @@ var REQUEST_PROMISES = new Map()
 -request_id: <string> (optional if no response expected)
 -payload: <string>
 */
+
 /**
- * MQTT Message handler of the module. Handles all messages from the Supervisor and other Workers 
- * @param {*} hostname 
- * @param {*} port 
- * @param {*} topic 
- * @param {*} message 
- * @returns 
+ * MQTT Message handler of the module. Handles all messages from the Supervisor and other Workers
+ * Please not that this function is not responsible for "process-related" messages, those are handled by the eventrouter.js
+ * @param {string} hostname 
+ * @param {int} port 
+ * @param {string} topic 
+ * @param {string} message 
+ * @returns -
  */
 function onMessageReceived(hostname, port, topic, message) {
     LOG.logWorker('DEBUG', `New message received from topic: ${topic}`, module.id)
@@ -200,7 +207,7 @@ function onMessageReceived(hostname, port, topic, message) {
 
 /**
  * Creates a new eGSM engine in the EGSM_ENGINE module
- * @param {*} payload The received payload in the request which contains all information and files which are necessary to create a new engine instance
+ * @param {Object} payload The received payload in the request which contains all information and files which are necessary to create a new engine instance
  * @returns SUCCESS or ERROR objects with the appropriate message
  */
 function createNewEngine(payload) {
@@ -280,7 +287,7 @@ function createNewEngine(payload) {
 
 /**
  * Wrapper function to execute delay
- * @param {*} delay Required dely in millis
+ * @param {int} delay Required dely in millis
  */
 async function wait(delay) {
     await AUX.sleep(delay)
@@ -310,7 +317,7 @@ async function checkIdCandidate(candidate) {
 
 /**
  * Init Broker connection the module will use. It will also find a unique ID for the Worker itself
- * @param {*} broker Broker credentials
+ * @param {Broker} broker Broker credentials
  * @returns Returns the own ID of the Worker
  */
 async function initPrimaryBrokerConnection(broker) {
