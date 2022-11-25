@@ -3,8 +3,7 @@ var xml2js = require('xml2js');
 const EVENTR = require('../eventrouter/eventrouter');
 var EventManager = require('../egsm-common/auxiliary/eventManager');
 var LOG = require("../egsm-common/auxiliary/logManager")
-var DB = require("../egsm-common/database/databaseconnector")
-var VALIDATOR = require("../egsm-common/database/validator")
+
 
 //===============================================================DATA STRUCTURES BEGIN=========================================================================
 var MAX_ENGINES = 50000
@@ -493,12 +492,7 @@ var STAGE = {
             state: this.state,
             compliance: this.compliance,
         }
-        if (!VALIDATOR.validateStageLogMessage(eventJson)) {
-            LOG.logWorker('WARNING', `Data is missing to write StageEvent log`, module.id)
-            return
-        }
-        DB.writeStageEvent(eventJson)
-        EVENTR.publishLogEvent('stage', this.engineid, JSON.stringify(eventJson))
+        EVENTR.publishLogEvent('stage', this.engineid, eventJson)
     },
 
     changeState: function (newState) {
