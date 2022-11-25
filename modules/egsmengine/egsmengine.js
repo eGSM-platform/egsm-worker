@@ -3,10 +3,15 @@ var xml2js = require('xml2js');
 const EVENTR = require('../eventrouter/eventrouter');
 var EventManager = require('../egsm-common/auxiliary/eventManager');
 var LOG = require("../egsm-common/auxiliary/logManager")
+var DB = require("../egsm-common/database/databaseconnector")
+var VALIDATOR = require("../egsm-common/database/validator")
 
 //===============================================================DATA STRUCTURES BEGIN=========================================================================
 var MAX_ENGINES = 50000
 var ENGINES = new Map();
+
+//Data structures to calculate unique, sequentual event ID-s for each stage events
+var STAGE_EVENT_ID = new Map()
 
 function Engine(id) {
     const engineid = id; //Engine ID structure must be: <PROCESS_TYPE>/<INSTANCE_ID>__<PERSPECTIVE> (e.g.: "TRANSPORTATION/instance_1__Truck")
@@ -477,14 +482,22 @@ var STAGE = {
     },
 
     logStageState: function () {
+        var eventid = STAGE_EVENT_ID.get(this.engineid) + 1
+        STAGE_EVENT_ID.set(this.engineid, eventid)
         var eventJson = {
             processid: this.engineid,
+            eventid: 'event_' + eventid.toString(),
             stagename: this.name,
             timestamp: Date.now(),
             status: this.status,
             state: this.state,
             compliance: this.compliance,
         }
+        if (!VALIDATOR.validateStageLogMessage(eventJson)) {
+            LOG.logWorker('WARNING', `Data is missing to write StageEvent log`, module.id)
+            return
+        }
+        DB.writeStageEvent(eventJson)
         EVENTR.publishLogEvent('stage', this.engineid, JSON.stringify(eventJson))
     },
 
@@ -1096,6 +1109,7 @@ module.exports = {
         if (ENGINES.has(engineid)) {
             return "already_exists"
         }
+        STAGE_EVENT_ID.set(engineid, 0)
         ENGINES.set(engineid, new Engine(engineid))
         console.log("New Engine created")
         startEngine(engineid, informalModel, processModel)
@@ -1108,6 +1122,7 @@ module.exports = {
         if (!ENGINES.has(engineid)) {
             return "not_defined"
         }
+        STAGE_EVENT_ID.delete(engineid)
         ENGINES.delete(engineid)
         //Notify Aggregators about deleting the Engine
         EVENTR.publishLifeCycleEvent(engineid, 'deleted')

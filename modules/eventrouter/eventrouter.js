@@ -8,6 +8,7 @@ var xml2js = require('xml2js');
 
 var mqtt = require("../egsm-common/communication/mqttconnector")
 var LOG = require('../egsm-common/auxiliary/logManager')
+var DB = require("../egsm-common/database/databaseconnector")
 
 module.id = "EVENTR"
 
@@ -196,6 +197,7 @@ function onMessageReceived(hostname, port, topic, message) {
                                             process_type: elements[0],
                                             process_id: elements[1]
                                         }
+                                        DB.writeArtifactEvent(eventDetail)
                                         publishLogEvent('artifact', engineid, JSON.stringify(eventDetail))
                                         deleteSubscription(engineid,
                                             artifacts[artifact].name + '/' + artifacts[artifact].id + '/status',
@@ -214,6 +216,7 @@ function onMessageReceived(hostname, port, topic, message) {
                                             process_type: elements[0],
                                             process_id: elements[1]
                                         }
+                                        DB.writeArtifactEvent(eventDetail)
                                         publishLogEvent('artifact', engineid, JSON.stringify(eventDetail))
                                         createSubscription(engineid,
                                             artifacts[artifact].name + '/' + artifacts[artifact].id + '/status',
@@ -236,6 +239,7 @@ function onMessageReceived(hostname, port, topic, message) {
                                             process_type: elements[0],
                                             process_id: elements[1]
                                         }
+                                        DB.writeArtifactEvent(eventDetail)
                                         publishLogEvent('artifact', engineid, JSON.stringify(eventDetail))
                                         deleteSubscription(engineid,
                                             artifacts[artifact].name + '/' + artifacts[artifact].id + '/status',
