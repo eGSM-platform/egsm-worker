@@ -484,7 +484,8 @@ var STAGE = {
         var eventid = STAGE_EVENT_ID.get(this.engineid) + 1
         STAGE_EVENT_ID.set(this.engineid, eventid)
         var eventJson = {
-            processid: this.engineid,
+            processtype:this.process_type,
+            instanceid: this.process_instance,
             eventid: 'event_' + eventid.toString(),
             stagename: this.name,
             timestamp: Date.now(),
@@ -492,7 +493,7 @@ var STAGE = {
             state: this.state,
             compliance: this.compliance,
         }
-        EVENTR.publishLogEvent('stage', this.engineid, eventJson)
+        EVENTR.publishLogEvent('stage', this.process_type, this.process_instance, eventJson)
     },
 
     changeState: function (newState) {
@@ -1107,8 +1108,6 @@ module.exports = {
         ENGINES.set(engineid, new Engine(engineid))
         console.log("New Engine created")
         startEngine(engineid, informalModel, processModel)
-        //Notify Aggregators about the new Engine Instance
-        EVENTR.publishLifeCycleEvent(engineid, 'created')
         return 'created'
     },
 
@@ -1118,8 +1117,6 @@ module.exports = {
         }
         STAGE_EVENT_ID.delete(engineid)
         ENGINES.delete(engineid)
-        //Notify Aggregators about deleting the Engine
-        EVENTR.publishLifeCycleEvent(engineid, 'deleted')
         return 'deleted'
     },
 

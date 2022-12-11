@@ -107,8 +107,8 @@ function deleteSubscription(engineid, topic, hostname, port) {
  * @param {string} engineid 
  * @param {Object} eventDetailsJson 
  */
-function publishLogEvent(type, engineid, eventDetailsJson) {
-    var topic = engineid
+function publishLogEvent(type, processtype, processinstance, eventDetailsJson) {
+    var topic = processtype + '/' + processinstance
     switch (type) {
         case 'stage':
             if (!VALIDATOR.validateStageLogMessage(eventDetailsJson)) {
@@ -131,22 +131,6 @@ function publishLogEvent(type, engineid, eventDetailsJson) {
             break;
     }
     mqtt.publishTopic(ENGINES.get(engineid).hostname, ENGINES.get(engineid).port, topic, JSON.stringify(eventDetailsJson))
-}
-
-/**
- * Function to notify Aggregators through 'process_lifecycle' topic about the instatiation or termination of an engine
- * @param {string} engineid Engine ID
- * @param {string} event created/deleted events 
- */
-function publishLifeCycleEvent(engineid, event) {
-    LOG.logWorker('DEBUG', `Publishing lifecyle event from ${engineid}`, module.id)
-    var elements = engineid.split('/')
-    mqtt.publishTopic(ENGINES.get(engineid).hostname, ENGINES.get(engineid).port, 'process_lifecycle', JSON.stringify({
-        event_type: event,
-        process_type: elements[0],
-        instance_id: elements[1],
-        stakeholders: STAKEHOLDERS.get(engineid)
-    }))
 }
 
 /**
@@ -208,7 +192,7 @@ function onMessageReceived(hostname, port, topic, message) {
                                         elements = engineid.split('/')
                                         var eventDetail = {
                                             artifact_name: artifacts[artifact].name + '/' + artifacts[artifact].id,
-                                            event_id: "event_" + UUID.v4() ,
+                                            event_id: "event_" + UUID.v4(),
                                             timestamp: Math.floor(Date.now() / 1000),
                                             artifact_state: 'detached',
                                             process_type: elements[0],
@@ -394,7 +378,6 @@ function onEngineStop(engineid) {
 mqtt.init(onMessageReceived)
 
 module.exports = {
-    publishLifeCycleEvent: publishLifeCycleEvent,
     publishLogEvent: publishLogEvent,
     setEngineDefaults: setEngineDefaults,
     initConnections: initConnections,
