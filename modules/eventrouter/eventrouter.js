@@ -5,9 +5,12 @@
  */
 
 var xml2js = require('xml2js');
+var UUID = require("uuid");
 
 var mqtt = require("../egsm-common/communication/mqttconnector")
 var LOG = require('../egsm-common/auxiliary/logManager')
+var DB = require("../egsm-common/database/databaseconnector")
+var VALIDATOR = require("../egsm-common/database/validator");
 
 module.id = "EVENTR"
 
@@ -102,38 +105,32 @@ function deleteSubscription(engineid, topic, hostname, port) {
  * Publishing logs from engines to the primary broker of the engine
  * @param {string} type 
  * @param {string} engineid 
- * @param {string} eventDetailsJson 
+ * @param {Object} eventDetailsJson 
  */
-function publishLogEvent(type, engineid, eventDetailsJson) {
-    var topic = engineid
+function publishLogEvent(type, processtype, processinstance, eventDetailsJson) {
+    var topic = processtype + '/' + processinstance
     switch (type) {
         case 'stage':
+            if (!VALIDATOR.validateStageLogMessage(eventDetailsJson)) {
+                LOG.logWorker('WARNING', `Data is missing to write StageEvent log`, module.id)
+                return
+            }
+            DB.writeStageEvent(eventDetailsJson)
             topic = topic + '/stage_log'
             break;
         case 'artifact':
+            if (!VALIDATOR.validateArtifactLogMessage(eventDetailsJson)) {
+                LOG.logWorker('WARNING', `Data is missing to write ArtifactEvent log`, module.id)
+                return
+            }
+            DB.writeArtifactEvent(eventDetailsJson)
             topic = topic + '/artifact_log'
             break;
         case 'adhoc':
             topic = topic + '/adhoc'
             break;
     }
-    mqtt.publishTopic(ENGINES.get(engineid).hostname, ENGINES.get(engineid).port, topic, eventDetailsJson)
-}
-
-/**
- * Function to notify Aggregators through 'process_lifecycle' topic about the instatiation or termination of an engine
- * @param {string} engineid Engine ID
- * @param {string} event created/deleted events 
- */
-function publishLifeCycleEvent(engineid, event) {
-    LOG.logWorker('DEBUG', `Publishing lifecyle event from ${engineid}`, module.id)
-    var elements = engineid.split('/')
-    mqtt.publishTopic(ENGINES.get(engineid).hostname, ENGINES.get(engineid).port, 'process_lifecycle', JSON.stringify({
-        event_type: event,
-        process_type: elements[0],
-        instance_id: elements[1],
-        stakeholders: STAKEHOLDERS.get(engineid)
-    }))
+    mqtt.publishTopic(ENGINES.get(engineid).hostname, ENGINES.get(engineid).port, topic, JSON.stringify(eventDetailsJson))
 }
 
 /**
@@ -187,38 +184,40 @@ function onMessageReceived(hostname, port, topic, message) {
                                     //Unsubscribing from old artifact topic if it exists
                                     if (artifacts[artifact].id != '') {
                                         var engineid = subscribers[engine]
+                                        deleteSubscription(engineid,
+                                            artifacts[artifact].name + '/' + artifacts[artifact].id + '/status',
+                                            artifacts[artifact].host,
+                                            artifacts[artifact].port)
                                         //Sending event to aggregator
                                         elements = engineid.split('/')
                                         var eventDetail = {
                                             artifact_name: artifacts[artifact].name + '/' + artifacts[artifact].id,
+                                            event_id: "event_" + UUID.v4(),
                                             timestamp: Math.floor(Date.now() / 1000),
                                             artifact_state: 'detached',
                                             process_type: elements[0],
                                             process_id: elements[1]
                                         }
-                                        publishLogEvent('artifact', engineid, JSON.stringify(eventDetail))
-                                        deleteSubscription(engineid,
-                                            artifacts[artifact].name + '/' + artifacts[artifact].id + '/status',
-                                            artifacts[artifact].host,
-                                            artifacts[artifact].port)
+                                        publishLogEvent('artifact', engineid, eventDetail)
                                     }
                                     artifacts[artifact].id = msgJson.event.payloadData.data || ''
                                     if (artifacts[artifact].id != '') {
                                         var engineid = subscribers[engine]
+                                        createSubscription(engineid,
+                                            artifacts[artifact].name + '/' + artifacts[artifact].id + '/status',
+                                            artifacts[artifact].host,
+                                            artifacts[artifact].port)
                                         //Sending event to aggregator
                                         elements = engineid.split('/')
                                         var eventDetail = {
                                             artifact_name: artifacts[artifact].name + '/' + artifacts[artifact].id,
+                                            event_id: "event_" + UUID.v4(),
                                             timestamp: Math.floor(Date.now() / 1000),
                                             artifact_state: 'attached',
                                             process_type: elements[0],
                                             process_id: elements[1]
                                         }
-                                        publishLogEvent('artifact', engineid, JSON.stringify(eventDetail))
-                                        createSubscription(engineid,
-                                            artifacts[artifact].name + '/' + artifacts[artifact].id + '/status',
-                                            artifacts[artifact].host,
-                                            artifacts[artifact].port)
+                                        publishLogEvent('artifact', engineid, eventDetail)
                                     }
                                 }
                             }
@@ -227,22 +226,22 @@ function onMessageReceived(hostname, port, topic, message) {
                                 if (msgJson.event.payloadData.eventid == artifacts[artifact].unbindingEvents[unbindigEvent]) {
                                     if (artifacts[artifact].id != '') {
                                         var engineid = subscribers[engine]
+                                        deleteSubscription(engineid,
+                                            artifacts[artifact].name + '/' + artifacts[artifact].id + '/status',
+                                            artifacts[artifact].host,
+                                            artifacts[artifact].port)
+                                        artifacts[artifact].id = ''
                                         //Sending event to aggregator
                                         elements = engineid.split('/')
                                         var eventDetail = {
                                             artifact_name: artifacts[artifact].name + '/' + artifacts[artifact].id,
+                                            event_id: "event_" + UUID.v4(),
                                             timestamp: Math.floor(Date.now() / 1000),
                                             artifact_state: 'detached',
                                             process_type: elements[0],
                                             process_id: elements[1]
                                         }
-                                        publishLogEvent('artifact', engineid, JSON.stringify(eventDetail))
-                                        deleteSubscription(engineid,
-                                            artifacts[artifact].name + '/' + artifacts[artifact].id + '/status',
-                                            artifacts[artifact].host,
-                                            artifacts[artifact].port)
-
-                                        artifacts[artifact].id = ''
+                                        publishLogEvent('artifact', engineid, eventDetail)
                                     }
                                 }
                             }
@@ -347,29 +346,12 @@ function initConnections(engineid, bindingfile) {
 }
 
 /**
- * Makes possible to publish events by engines, which can be used by other engines
- * @param {string} engineid 
- * @param {Object} data 
- */
-function processPublish(engineid, data) {
-    var topic = engineid + '/status'
-    if (SUBSCRIPTIONS.has(topic)) {
-        for (var item in SUBSCRIPTIONS.get(topic)) {
-            var engineidToNotify = SUBSCRIPTIONS.get(topic)[item]
-            ENGINES.get(engineidToNotify).onMessageReceived(ENGINES.get(engineid).hostname, ENGINES.get(engineid).port, topic,
-                { parameters: { name: (JSON.parse(data.toString())).event.payloadData.eventid, value: '' } })
-        }
-    }
-    mqtt.publishTopic(ENGINES.get(engineid).hostname, ENGINES.get(engineid).port, topic, data)
-}
-
-/**
  * Should be called by the engine instance before termination
  * The function will unsubscribe from all related topics and remove the process from the module
  * @param {string} engineid 
  * @returns "ok" or "not_defined" if the engine is not defined in this module
  */
-function onEngineStop (engineid) {
+function onEngineStop(engineid) {
     if (ENGINES.has(engineid)) {
         var topics = []
         SUBSCRIPTIONS.forEach(function (value, key) {
@@ -396,11 +378,9 @@ function onEngineStop (engineid) {
 mqtt.init(onMessageReceived)
 
 module.exports = {
-    publishLifeCycleEvent: publishLifeCycleEvent,
     publishLogEvent: publishLogEvent,
     setEngineDefaults: setEngineDefaults,
     initConnections: initConnections,
-    processPublish: processPublish,
     onEngineStop: onEngineStop,
 };
 
