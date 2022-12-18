@@ -3,6 +3,7 @@ var xml2js = require('xml2js');
 const EVENTR = require('../eventrouter/eventrouter');
 var EventManager = require('../egsm-common/auxiliary/eventManager');
 var LOG = require("../egsm-common/auxiliary/logManager")
+const { Validator } = require('../egsm-common/auxiliary/validator');
 
 
 //===============================================================DATA STRUCTURES BEGIN=========================================================================
@@ -12,13 +13,14 @@ var ENGINES = new Map();
 //Data structures to calculate unique, sequentual event ID-s for each stage events
 var STAGE_EVENT_ID = new Map()
 
-function Engine(id) {
+function Engine(id, processstakeholders) {
     const engineid = id; //Engine ID structure must be: <PROCESS_TYPE>/<INSTANCE_ID>__<PERSPECTIVE> (e.g.: "TRANSPORTATION/instance_1__Truck")
     const elements = id.split('__')
     const elements2 = elements[0].split('/')
     const process_type = elements2[0]
     const process_instance = elements2[1]
     const process_perspective = elements[1]
+    const stakeholders = processstakeholders
     const startTime = new Date().getTime() / 1000 / 60
     var lifeCycleStatus = "RUNNING" //RUNNING/FINISHED
 
@@ -484,7 +486,7 @@ var STAGE = {
         var eventid = STAGE_EVENT_ID.get(this.engineid) + 1
         STAGE_EVENT_ID.set(this.engineid, eventid)
         var eventJson = {
-            processtype:this.process_type,
+            processtype: this.process_type,
             instanceid: this.process_instance,
             eventid: 'event_' + eventid.toString(),
             stagename: this.name,
@@ -1061,6 +1063,21 @@ module.exports = {
         return result
     },
 
+    getFilteredProcesses: function (rules) {
+        var filteredEngines = new Set()
+        for (let [key, value] of ENGINES) {
+            if (Validator.isRulesSatisfied(value, rules)) {
+                filteredEngines.add(key)
+            }
+        }
+        var result = []
+        filteredEngines.forEach(engine => {
+            console.log(engine)
+            result.push(this.getEngineDetails(engine))
+        });
+        return result
+    },
+
     /**
      * 
      * @param {String} engineid 
@@ -1100,12 +1117,12 @@ module.exports = {
      * @param {*} processModel 
      * @returns 'created' if the operation was successfull, "already_exists" if the ID is already used
      */
-    createNewEngine: async function (engineid, informalModel, processModel) {
+    createNewEngine: async function (engineid, informalModel, processModel, stakeholders) {
         if (ENGINES.has(engineid)) {
             return "already_exists"
         }
         STAGE_EVENT_ID.set(engineid, 0)
-        ENGINES.set(engineid, new Engine(engineid))
+        ENGINES.set(engineid, new Engine(engineid, stakeholders))
         console.log("New Engine created")
         startEngine(engineid, informalModel, processModel)
         return 'created'

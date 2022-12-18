@@ -20,6 +20,8 @@ const ID_VERIFICATION_PERIOD = 1500 //Time the other Workers has to reply if the
 //Topic definitions
 const SUPERVISOR_TOPIC_IN = 'supervisor_woker_in'
 const SUPERVISOR_TOPIC_OUT = 'supervisor_worker_out'
+const AGGREGATOR_GLOBAL_TOPIC_IN = 'aggregator_worker_in'
+const AGGREGATOR_GLOBAL_TOPIC_OUT = 'aggregator_global_out'
 var TOPIC_SELF = ''
 
 var MQTT_HOST = undefined
@@ -48,7 +50,7 @@ var REQUEST_PROMISES = new Map()
  */
 function onMessageReceived(hostname, port, topic, message) {
     LOG.logWorker('DEBUG', `New message received from topic: ${topic}`, module.id)
-    if ((hostname != MQTT_HOST || port != MQTT_PORT) || (topic != SUPERVISOR_TOPIC_OUT && topic != TOPIC_SELF)) {
+    if ((hostname != MQTT_HOST || port != MQTT_PORT) || (topic != SUPERVISOR_TOPIC_OUT && topic != TOPIC_SELF && topic != AGGREGATOR_GLOBAL_TOPIC_OUT)) {
         LOG.logWorker('DEBUG', `Reveived message is not intended to handle here`, module.id)
         return
     }
@@ -157,6 +159,26 @@ function onMessageReceived(hostname, port, topic, message) {
         }
     }
 
+    else if (topic == AGGREGATOR_GLOBAL_TOPIC_OUT) {
+        switch (msgJson['message_type']) {
+            case 'PROCESS_GROUP_MEMBER_DISCOVERY':
+                LOG.logWorker('DEBUG', `PROCESS_GROUP_MEMBER_DISCOVERY requested`, module.id)
+                var result = EGSM_ENGINE.getFilteredProcesses(msgJson['payload']['rules'])
+                console.log(result)
+                if (result.length > 0) {
+                    console.log('RESPONSE')
+                    var response = {
+                        request_id: msgJson['request_id'],
+                        message_type: 'PROCESS_GROUP_MEMBER_DISCOVERY_RESP',
+                        sender_id: TOPIC_SELF,
+                        payload: { engines: result }
+                    }
+                    console.log('RESPONSE')
+                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, AGGREGATOR_GLOBAL_TOPIC_IN, JSON.stringify(response))
+                }
+        }
+    }
+
     //These messages were sent by the Supervisor or by another Workers and only this Worker is receiveing it
     else if (topic == TOPIC_SELF) {
         switch (msgJson['message_type']) {
@@ -222,13 +244,14 @@ function createNewEngine(payload) {
 
     //Check if necessary data fields are available
     var engine_id = payload.engine_id
+    var stakeholders = payload.stakeholders
 
     var mqtt_broker = payload.mqtt_broker
     var mqtt_port = payload.mqtt_port
     var mqtt_user = payload.mqtt_user
     var mqtt_password = payload.mqtt_password
 
-    if (typeof engine_id == "undefined" || typeof mqtt_broker == "undefined" || mqtt_broker == "undefined" || typeof mqtt_port == "undefined"
+    if (typeof engine_id == "undefined" || typeof stakeholders == "undefined" || typeof mqtt_broker == "undefined" || mqtt_broker == "undefined" || typeof mqtt_port == "undefined"
         || typeof mqtt_user == "undefined" || typeof mqtt_password == "undefined") {
         LOG.logWorker('WARNING', 'Engine creation request cancelled. Argument(s) are missing', module.id)
         return responsePayload['error'] = 'ARGUMENT_MISSING'
@@ -271,7 +294,7 @@ function createNewEngine(payload) {
     EVENT_ROUTER.initConnections(engine_id, eventRouterConfig)
 
     //Creating new engine
-    EGSM_ENGINE.createNewEngine(engine_id, informalModel, processModel).then(
+    EGSM_ENGINE.createNewEngine(engine_id, informalModel, processModel, stakeholders).then(
         function (value) {
             if (value == 'created') {
                 LOG.logWorker('DEBUG', 'New engine created', module.id)
@@ -342,6 +365,7 @@ async function initPrimaryBrokerConnection(broker) {
         }
     }
     MQTT.subscribeTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_OUT)
+    MQTT.subscribeTopic(MQTT_HOST, MQTT_PORT, AGGREGATOR_GLOBAL_TOPIC_OUT)
     return TOPIC_SELF
 }
 
