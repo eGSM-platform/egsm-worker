@@ -18,10 +18,10 @@ module.id = "MQTTCOMM"
 const ID_VERIFICATION_PERIOD = 1500 //Time the other Workers has to reply if their ID is identical with the one the local worker wants to use
 
 //Topic definitions
-const SUPERVISOR_TOPIC_IN = 'supervisor_woker_in'
-const SUPERVISOR_TOPIC_OUT = 'supervisor_worker_out'
-const AGGREGATOR_GLOBAL_TOPIC_IN = 'aggregator_worker_in'
-const AGGREGATOR_GLOBAL_TOPIC_OUT = 'aggregator_global_out'
+const WORKERS_TO_SUPERVISOR = 'workers_to_supervisor'
+const SUPERVISOR_TO_WORKERS = 'supervisor_to_workers'
+const WORKERS_TO_AGGREGATORS = 'workers_to_aggregators'
+const AGGREGATORS_TO_WORKERS = 'aggregators_to_workers'
 var TOPIC_SELF = ''
 
 var MQTT_HOST = undefined
@@ -50,7 +50,7 @@ var REQUEST_PROMISES = new Map()
  */
 function onMessageReceived(hostname, port, topic, message) {
     LOG.logWorker('DEBUG', `New message received from topic: ${topic}`, module.id)
-    if ((hostname != MQTT_HOST || port != MQTT_PORT) || (topic != SUPERVISOR_TOPIC_OUT && topic != TOPIC_SELF && topic != AGGREGATOR_GLOBAL_TOPIC_OUT)) {
+    if ((hostname != MQTT_HOST || port != MQTT_PORT) || (topic != SUPERVISOR_TO_WORKERS && topic != TOPIC_SELF && topic != AGGREGATORS_TO_WORKERS)) {
         LOG.logWorker('DEBUG', `Reveived message is not intended to handle here`, module.id)
         return
     }
@@ -60,9 +60,9 @@ function onMessageReceived(hostname, port, topic, message) {
         LOG.logWorker('ERROR', `Error while parsing mqtt message: ${message}`, module.id)
         return
     }
-    //The message has been published by the supervisor to the shared SUPERVISOR_TOPIC_OUT
+    //The message has been published by the supervisor to the shared SUPERVISOR_TO_WORKERS
     //These messages have been delived to all other workers too
-    if (topic == SUPERVISOR_TOPIC_OUT) {
+    if (topic == SUPERVISOR_TO_WORKERS) {
         switch (msgJson['message_type']) {
             case 'NEW_ENGINE_SLOT':
                 LOG.logWorker('DEBUG', `NEW_ENGINE_SLOT requested`, module.id)
@@ -73,7 +73,7 @@ function onMessageReceived(hostname, port, topic, message) {
                         message_type: 'NEW_ENGINE_SLOT_RESP',
                         sender_id: TOPIC_SELF
                     }
-                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
+                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, WORKERS_TO_SUPERVISOR, JSON.stringify(response))
                 }
                 break;
             case 'PING':
@@ -90,7 +90,7 @@ function onMessageReceived(hostname, port, topic, message) {
                         engine_mumber: EGSM_ENGINE.getEngineNumber()
                     }
                 }
-                MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
+                MQTT.publishTopic(MQTT_HOST, MQTT_PORT, WORKERS_TO_SUPERVISOR, JSON.stringify(response))
                 break;
             case 'SEARCH':
                 LOG.logWorker('DEBUG', `SEARCH requested for ${msgJson['payload']['engine_id']}`, module.id)
@@ -101,7 +101,7 @@ function onMessageReceived(hostname, port, topic, message) {
                         sender_id: TOPIC_SELF,
                         payload: { rest_api: ROUTES.getRESTCredentials() }
                     }
-                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
+                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, WORKERS_TO_SUPERVISOR, JSON.stringify(response))
                 }
                 break;
             case 'GET_COMPLETE_DIAGRAM':
@@ -113,7 +113,7 @@ function onMessageReceived(hostname, port, topic, message) {
                         sender_id: TOPIC_SELF,
                         payload: { result: EGSM_ENGINE.getCompleteDiagram(msgJson['payload']['engine_id']) }
                     }
-                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
+                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, WORKERS_TO_SUPERVISOR, JSON.stringify(response))
                 }
                 break;
             case 'GET_COMPLETE_NODE_DIAGARM':
@@ -125,7 +125,7 @@ function onMessageReceived(hostname, port, topic, message) {
                         sender_id: TOPIC_SELF,
                         payload: { result: EGSM_ENGINE.getCompleteNodeDiagram(msgJson['payload']['engine_id']) }
                     }
-                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
+                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, WORKERS_TO_SUPERVISOR, JSON.stringify(response))
                 }
                 break;
             case 'PROCESS_SEARCH':
@@ -142,7 +142,7 @@ function onMessageReceived(hostname, port, topic, message) {
                     sender_id: TOPIC_SELF,
                     payload: { engines: engines }
                 }
-                MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
+                MQTT.publishTopic(MQTT_HOST, MQTT_PORT, WORKERS_TO_SUPERVISOR, JSON.stringify(response))
                 break;
             case 'DELETE_ENGINE':
                 LOG.logWorker('DEBUG', `DELETE_ENGINE requested for ${msgJson['payload']['engine_id']}`, module.id)
@@ -153,28 +153,25 @@ function onMessageReceived(hostname, port, topic, message) {
                         sender_id: TOPIC_SELF,
                         payload: { result: EGSM_ENGINE.removeEngine(msgJson['payload']['engine_id']) }
                     }
-                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
+                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, WORKERS_TO_SUPERVISOR, JSON.stringify(response))
                 }
                 break;
         }
     }
 
-    else if (topic == AGGREGATOR_GLOBAL_TOPIC_OUT) {
+    else if (topic == AGGREGATORS_TO_WORKERS) {
         switch (msgJson['message_type']) {
             case 'PROCESS_GROUP_MEMBER_DISCOVERY':
                 LOG.logWorker('DEBUG', `PROCESS_GROUP_MEMBER_DISCOVERY requested`, module.id)
                 var result = EGSM_ENGINE.getFilteredProcesses(msgJson['payload']['rules'])
-                console.log(result)
                 if (result.length > 0) {
-                    console.log('RESPONSE')
                     var response = {
                         request_id: msgJson['request_id'],
                         message_type: 'PROCESS_GROUP_MEMBER_DISCOVERY_RESP',
                         sender_id: TOPIC_SELF,
                         payload: { engines: result }
                     }
-                    console.log('RESPONSE')
-                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, AGGREGATOR_GLOBAL_TOPIC_IN, JSON.stringify(response))
+                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, WORKERS_TO_AGGREGATORS, JSON.stringify(response))
                 }
         }
     }
@@ -221,7 +218,7 @@ function onMessageReceived(hostname, port, topic, message) {
                     payload: resPayload,
                     message_type: 'GET_ENGINE_LIST_RESP'
                 }
-                MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
+                MQTT.publishTopic(MQTT_HOST, MQTT_PORT, WORKERS_TO_SUPERVISOR, JSON.stringify(response))
                 break;
         }
     }
@@ -364,8 +361,8 @@ async function initPrimaryBrokerConnection(broker) {
             MQTT.unsubscribeTopic(MQTT_HOST, MQTT_PORT, TOPIC_SELF)
         }
     }
-    MQTT.subscribeTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_OUT)
-    MQTT.subscribeTopic(MQTT_HOST, MQTT_PORT, AGGREGATOR_GLOBAL_TOPIC_OUT)
+    MQTT.subscribeTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TO_WORKERS)
+    MQTT.subscribeTopic(MQTT_HOST, MQTT_PORT, AGGREGATORS_TO_WORKERS)
     return TOPIC_SELF
 }
 

@@ -1063,6 +1063,11 @@ module.exports = {
         return result
     },
 
+    /**
+     * Get the engines which meet with provided rules
+     * @param {Object} rules Object containing rules
+     * @returns List of Engine ID-s
+     */
     getFilteredProcesses: function (rules) {
         var filteredEngines = new Set()
         for (let [key, value] of ENGINES) {
@@ -1128,6 +1133,11 @@ module.exports = {
         return 'created'
     },
 
+    /**
+     * Terminates and removes and engine specified by its ID
+     * @param {String} engineid Engine to terminate
+     * @returns 
+     */
     removeEngine: function (engineid) {
         if (!ENGINES.has(engineid)) {
             return "not_defined"
@@ -1137,6 +1147,11 @@ module.exports = {
         return 'deleted'
     },
 
+    /**
+     * Resets the specified engine
+     * @param {String} engineid Engine to reset
+     * @returns 
+     */
     resetEngine: function (engineid) {
         if (!ENGINES.has(engineid)) {
             return "not_defined"
