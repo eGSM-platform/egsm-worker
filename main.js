@@ -32,3 +32,15 @@ MQTTCOMM.initPrimaryBrokerConnection(broker).then((result) => {
 
 egsmengine.setEventRouter(event_router.processPublish)
 
+/*setInterval(function () {
+    const used = process.memoryUsage().heapUsed / 1024 / 1024;
+    console.log(`The script uses approximately ${Math.round(used * 100) / 100} MB`);
+    
+    fs.appendFile('./validation/memory.txt', used.toString() + '\n', err => {
+      if (err) {
+        console.error(err);
+      }
+      // file written successfully
+    });
+  }, 2000)
+*/

@@ -1,5 +1,6 @@
 var xml2js = require('xml2js');
 
+var DDB = require('../egsm-common/database/databaseconnector')
 const EVENTR = require('../eventrouter/eventrouter');
 var EventManager = require('../egsm-common/auxiliary/eventManager');
 var LOG = require("../egsm-common/auxiliary/logManager")
@@ -1123,6 +1124,7 @@ module.exports = {
      * @returns 'created' if the operation was successfull, "already_exists" if the ID is already used
      */
     createNewEngine: async function (engineid, informalModel, processModel, stakeholders) {
+        var start = Date.now()
         if (ENGINES.has(engineid)) {
             return "already_exists"
         }
@@ -1130,6 +1132,9 @@ module.exports = {
         ENGINES.set(engineid, new Engine(engineid, stakeholders))
         console.log("New Engine created")
         startEngine(engineid, informalModel, processModel)
+
+        const millis = Date.now() - start;
+        console.log(`seconds elapsed = ${Math.floor(millis)}`);
         return 'created'
     },
 
@@ -1138,9 +1143,17 @@ module.exports = {
      * @param {String} engineid Engine to terminate
      * @returns 
      */
-    removeEngine: function (engineid) {
+    removeEngine: async function (engineid) {
         if (!ENGINES.has(engineid)) {
             return "not_defined"
+        }
+        //Engine found
+        //Perform database operations to update aggregation statistics
+        await DDB.increaseProcessTypeInstanceCounter(ENGINES.get(engineid).process_type)
+        for (var key in ENGINES.get(engineid).Stage_array) {
+            await DDB.increaseProcessTypeStatisticsCounter(ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_perspective, key, ENGINES.get(engineid).Stage_array[key].state)
+            await DDB.increaseProcessTypeStatisticsCounter(ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_perspective, key, ENGINES.get(engineid).Stage_array[key].status)
+            await DDB.increaseProcessTypeStatisticsCounter(ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_perspective, key, ENGINES.get(engineid).Stage_array[key].compliance)
         }
         STAGE_EVENT_ID.delete(engineid)
         ENGINES.delete(engineid)
