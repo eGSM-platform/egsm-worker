@@ -486,17 +486,26 @@ var STAGE = {
     logStageState: function () {
         var eventid = STAGE_EVENT_ID.get(this.engineid) + 1
         STAGE_EVENT_ID.set(this.engineid, eventid)
+        
+        const elements = this.engineid.split('__')
+        const elements2 = elements[0].split('/')
+        const process_type = elements2[0]
+        const process_instance = elements2[1]
+        const process_perspective = elements[1]
+
         var eventJson = {
-            processtype: this.process_type,
-            instanceid: this.process_instance,
-            eventid: 'event_' + eventid.toString(),
-            stagename: this.name,
+            process_type: process_type,
+            process_id: process_instance,
+            process_perspective: process_perspective,
+            event_id: 'event_' + eventid.toString(),
+            stage_name: this.name,
             timestamp: Date.now(),
             status: this.status,
             state: this.state,
             compliance: this.compliance,
         }
-        EVENTR.publishLogEvent('stage', this.process_type, this.process_instance, eventJson)
+        console.log(eventJson)
+        EVENTR.publishLogEvent('stage',this.engineid, process_type, process_instance, eventJson)
     },
 
     changeState: function (newState) {
