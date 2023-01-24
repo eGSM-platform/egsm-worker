@@ -503,8 +503,8 @@ var STAGE = {
             status: this.status,
             state: this.state,
             compliance: this.compliance,
+            whole: ENGINES.get(this.engineid).Stage_array
         }
-        console.log(eventJson)
         EVENTR.publishLogEvent('stage', this.engineid, process_type, process_instance, eventJson)
     },
 
