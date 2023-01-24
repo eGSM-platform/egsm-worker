@@ -5,7 +5,7 @@ const EVENTR = require('../eventrouter/eventrouter');
 var EventManager = require('../egsm-common/auxiliary/eventManager');
 var LOG = require("../egsm-common/auxiliary/logManager")
 const { Validator } = require('../egsm-common/auxiliary/validator');
-
+var CONNCONFIG = require('../egsm-common/config/connectionconfig')
 
 //===============================================================DATA STRUCTURES BEGIN=========================================================================
 var MAX_ENGINES = 50000
@@ -486,7 +486,7 @@ var STAGE = {
     logStageState: function () {
         var eventid = STAGE_EVENT_ID.get(this.engineid) + 1
         STAGE_EVENT_ID.set(this.engineid, eventid)
-        
+
         const elements = this.engineid.split('__')
         const elements2 = elements[0].split('/')
         const process_type = elements2[0]
@@ -505,7 +505,7 @@ var STAGE = {
             compliance: this.compliance,
         }
         console.log(eventJson)
-        EVENTR.publishLogEvent('stage',this.engineid, process_type, process_instance, eventJson)
+        EVENTR.publishLogEvent('stage', this.engineid, process_type, process_instance, eventJson)
     },
 
     changeState: function (newState) {
@@ -1140,6 +1140,7 @@ module.exports = {
         STAGE_EVENT_ID.set(engineid, 0)
         ENGINES.set(engineid, new Engine(engineid, stakeholders))
         console.log("New Engine created")
+        DDB.writeNewProcessInstance(ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_instance + '__' + ENGINES.get(engineid).process_perspective , stakeholders, Date.now() / 1000, CONNCONFIG.getConfig().primary_broker.host, CONNCONFIG.getConfig().primary_broker.port.toString())
         startEngine(engineid, informalModel, processModel)
 
         const millis = Date.now() - start;
@@ -1159,11 +1160,28 @@ module.exports = {
         //Engine found
         //Perform database operations to update aggregation statistics
         await DDB.increaseProcessTypeInstanceCounter(ENGINES.get(engineid).process_type)
+
+        var metrics = []
         for (var key in ENGINES.get(engineid).Stage_array) {
-            await DDB.increaseProcessTypeStatisticsCounter(ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_perspective, key, ENGINES.get(engineid).Stage_array[key].state)
-            await DDB.increaseProcessTypeStatisticsCounter(ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_perspective, key, ENGINES.get(engineid).Stage_array[key].status)
-            await DDB.increaseProcessTypeStatisticsCounter(ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_perspective, key, ENGINES.get(engineid).Stage_array[key].compliance)
+            metrics.push({
+                name: key,
+                state: ENGINES.get(engineid).Stage_array[key].state,
+                status: ENGINES.get(engineid).Stage_array[key].status,
+                compliance: ENGINES.get(engineid).Stage_array[key].compliance
+            })
+            //await DDB.increaseProcessTypeStatisticsCounter(ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_perspective, key, ENGINES.get(engineid).Stage_array[key].state)
+            //await DDB.increaseProcessTypeStatisticsCounter(ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_perspective, key, ENGINES.get(engineid).Stage_array[key].status)
+            //await DDB.increaseProcessTypeStatisticsCounter(ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_perspective, key, ENGINES.get(engineid).Stage_array[key].compliance)
         }
+        await DDB.increaseProcessTypeStatisticsCounter(ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_perspective, metrics)
+        var outcome = 'SUCCESS'
+        for (var key in ENGINES.get(engineid).Stage_array) {
+            if (ENGINES.get(engineid).Stage_array[key].state == 'faulty' || ENGINES.get(engineid).Stage_array[key].compliance == 'outOfOrder') {
+                outcome = 'FAULTY'
+                break
+            }
+        }
+        await DDB.closeOngoingProcessInstance(ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_instance + '__' + ENGINES.get(engineid).process_perspective, Date.now() / 1000, outcome)
         STAGE_EVENT_ID.delete(engineid)
         ENGINES.delete(engineid)
         return 'deleted'
