@@ -89,7 +89,6 @@ function Engine(id, processstakeholders) {
     }
 
     var updateInfoModel = function (name, value) {
-        console.log(`update model: ${name}->${value}`)
         var attrs = [];
         if (value != undefined && value != '') {
             attrs = [];
@@ -1087,7 +1086,6 @@ module.exports = {
         }
         var result = []
         filteredEngines.forEach(engine => {
-            console.log(engine)
             result.push(this.getEngineDetails(engine))
         });
         return result
@@ -1139,13 +1137,11 @@ module.exports = {
         }
         STAGE_EVENT_ID.set(engineid, 0)
         ENGINES.set(engineid, new Engine(engineid, stakeholders))
-        console.log("New Engine created")
         DDB.writeNewProcessInstance(ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_instance + '__' + ENGINES.get(engineid).process_perspective, stakeholders, Date.now() / 1000, CONNCONFIG.getConfig().primary_broker.host, CONNCONFIG.getConfig().primary_broker.port.toString())
         startEngine(engineid, informalModel, processModel)
 
         const millis = Date.now() - start;
         EVENTR.publishProcessLifecycleEvent('created', engineid, ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_instance, stakeholders)
-        console.log(`seconds elapsed = ${Math.floor(millis)}`);
         return 'created'
     },
 
