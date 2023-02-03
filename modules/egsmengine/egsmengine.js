@@ -1140,10 +1140,11 @@ module.exports = {
         STAGE_EVENT_ID.set(engineid, 0)
         ENGINES.set(engineid, new Engine(engineid, stakeholders))
         console.log("New Engine created")
-        DDB.writeNewProcessInstance(ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_instance + '__' + ENGINES.get(engineid).process_perspective , stakeholders, Date.now() / 1000, CONNCONFIG.getConfig().primary_broker.host, CONNCONFIG.getConfig().primary_broker.port.toString())
+        DDB.writeNewProcessInstance(ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_instance + '__' + ENGINES.get(engineid).process_perspective, stakeholders, Date.now() / 1000, CONNCONFIG.getConfig().primary_broker.host, CONNCONFIG.getConfig().primary_broker.port.toString())
         startEngine(engineid, informalModel, processModel)
 
         const millis = Date.now() - start;
+        EVENTR.publishProcessLifecycleEvent('created', engineid, ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_instance, stakeholders)
         console.log(`seconds elapsed = ${Math.floor(millis)}`);
         return 'created'
     },
@@ -1183,6 +1184,7 @@ module.exports = {
         }
         await DDB.closeOngoingProcessInstance(ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_instance + '__' + ENGINES.get(engineid).process_perspective, Date.now() / 1000, outcome)
         STAGE_EVENT_ID.delete(engineid)
+        EVENTR.publishProcessLifecycleEvent('destructed', engineid, ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_instance, ENGINES.get(engineid).stakeholders)
         ENGINES.delete(engineid)
         return 'deleted'
     },

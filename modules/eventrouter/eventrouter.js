@@ -19,6 +19,8 @@ let SUBSCRIPTIONS = new Map(); //{HOST, PORT, TOPIC}-> [ENGINE_ID]
 let ARTIFACTS = new Map() //ENGINE_ID -> [{ARTIFACT_NAME, BROKER, HOST, BINDING, UNBINDING, ID}]
 let STAKEHOLDERS = new Map() //ENGINE_ID -> [{STAKEHOLDER_NAME, PROCESS_ID, BROKER, HOST}]
 
+const TOPIC_PROCESS_LIFECYCLE = 'process_lifecycle'
+
 /**
  * Subscribe an engine specified by its ID to a topic at a specified broker
  * @param {string} engineid 
@@ -133,6 +135,19 @@ function publishLogEvent(type, engineid, processtype, processinstance, eventDeta
     mqtt.publishTopic(ENGINES.get(engineid).hostname, ENGINES.get(engineid).port, topic, JSON.stringify(eventDetailsJson))
 }
 
+async function publishProcessLifecycleEvent(type, engineid, process_type, instance_id, stakeholders) {
+    var message = {
+        type: type,
+        process: {
+            engine_id: engineid,
+            stakeholders: stakeholders,
+            process_type: process_type,
+            instance_id: instance_id,
+        }
+    }
+    mqtt.publishTopic(ENGINES.get(engineid).hostname, ENGINES.get(engineid).port, TOPIC_PROCESS_LIFECYCLE, JSON.stringify(message))
+}
+
 /**
  * Messagehandler function
  * Called by the MQTT connector in case of new message arrived and will perform the 
@@ -230,7 +245,7 @@ function onMessageReceived(hostname, port, topic, message) {
                                             artifacts[artifact].name + '/' + artifacts[artifact].id + '/status',
                                             artifacts[artifact].host,
                                             artifacts[artifact].port)
-                                        
+
                                         //Sending event to aggregator
                                         elements = engineid.split('/')
                                         var eventDetail = {
@@ -380,6 +395,7 @@ mqtt.init(onMessageReceived)
 
 module.exports = {
     publishLogEvent: publishLogEvent,
+    publishProcessLifecycleEvent: publishProcessLifecycleEvent,
     setEngineDefaults: setEngineDefaults,
     initConnections: initConnections,
     onEngineStop: onEngineStop,
