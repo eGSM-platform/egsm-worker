@@ -11,7 +11,6 @@ angular.module('MainCtrl', []).controller('MainController', function ($scope, $h
 
 	$interval(function () {
 		if ($scope.ENGINE_ID != '') {
-			console.log('3')
 			$scope.tagline++;
 			$http.get('api/guards?engine_id=' + $scope.engineId).
 				success(function (data, status, headers, config) {

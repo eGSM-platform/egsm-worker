@@ -136,7 +136,6 @@ angular.module('ProcessCtrl', []).controller('ProcessController', function ($sco
         }
         // notice when the value of "model" changes: update the Diagram.model
         scope.$watch("model", function (newmodel) {
-          console.log("cambiato model: ");
           var oldmodel = diagram.model;
           if (oldmodel !== newmodel) {
             diagram.model = newmodel;

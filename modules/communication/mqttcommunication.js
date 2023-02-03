@@ -1,3 +1,8 @@
+/**
+ * Responsible to handle software-level MQTT communication
+ * It handles all communication with the supervisor and performs cooperation with other Worker instances
+ */
+
 var UUID = require("uuid");
 
 var MQTT = require("../egsm-common/communication/mqttconnector")
@@ -13,8 +18,10 @@ module.id = "MQTTCOMM"
 const ID_VERIFICATION_PERIOD = 1500 //Time the other Workers has to reply if their ID is identical with the one the local worker wants to use
 
 //Topic definitions
-const SUPERVISOR_TOPIC_IN = 'supervisor_woker_in'
-const SUPERVISOR_TOPIC_OUT = 'supervisor_worker_out'
+const WORKERS_TO_SUPERVISOR = 'workers_to_supervisor'
+const SUPERVISOR_TO_WORKERS = 'supervisor_to_workers'
+const WORKERS_TO_AGGREGATORS = 'workers_to_aggregators'
+const AGGREGATORS_TO_WORKERS = 'aggregators_to_workers'
 var TOPIC_SELF = ''
 
 var MQTT_HOST = undefined
@@ -31,17 +38,19 @@ var REQUEST_PROMISES = new Map()
 -request_id: <string> (optional if no response expected)
 -payload: <string>
 */
+
 /**
- * MQTT Message handler of the module. Handles all messages from the Supervisor and other Workers 
- * @param {*} hostname 
- * @param {*} port 
- * @param {*} topic 
- * @param {*} message 
- * @returns 
+ * MQTT Message handler of the module. Handles all messages from the Supervisor and other Workers
+ * Please not that this function is not responsible for "process-related" messages, those are handled by the eventrouter.js
+ * @param {string} hostname 
+ * @param {int} port 
+ * @param {string} topic 
+ * @param {string} message 
+ * @returns -
  */
 function onMessageReceived(hostname, port, topic, message) {
     LOG.logWorker('DEBUG', `New message received from topic: ${topic}`, module.id)
-    if ((hostname != MQTT_HOST || port != MQTT_PORT) || (topic != SUPERVISOR_TOPIC_OUT && topic != TOPIC_SELF)) {
+    if ((hostname != MQTT_HOST || port != MQTT_PORT) || (topic != SUPERVISOR_TO_WORKERS && topic != TOPIC_SELF && topic != AGGREGATORS_TO_WORKERS)) {
         LOG.logWorker('DEBUG', `Reveived message is not intended to handle here`, module.id)
         return
     }
@@ -51,19 +60,20 @@ function onMessageReceived(hostname, port, topic, message) {
         LOG.logWorker('ERROR', `Error while parsing mqtt message: ${message}`, module.id)
         return
     }
-    //The message has been published by the supervisor to the shared SUPERVISOR_TOPIC_OUT
+    //The message has been published by the supervisor to the shared SUPERVISOR_TO_WORKERS
     //These messages have been delived to all other workers too
-    if (topic == SUPERVISOR_TOPIC_OUT) {
+    if (topic == SUPERVISOR_TO_WORKERS) {
         switch (msgJson['message_type']) {
             case 'NEW_ENGINE_SLOT':
                 LOG.logWorker('DEBUG', `NEW_ENGINE_SLOT requested`, module.id)
                 if (EGSM_ENGINE.hasFreeSlot()) {
                     var response = {
                         request_id: msgJson['request_id'],
+                        free_slots: EGSM_ENGINE.getCapacity() - EGSM_ENGINE.getEngineNumber(),
                         message_type: 'NEW_ENGINE_SLOT_RESP',
                         sender_id: TOPIC_SELF
                     }
-                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
+                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, WORKERS_TO_SUPERVISOR, JSON.stringify(response))
                 }
                 break;
             case 'PING':
@@ -80,7 +90,7 @@ function onMessageReceived(hostname, port, topic, message) {
                         engine_mumber: EGSM_ENGINE.getEngineNumber()
                     }
                 }
-                MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
+                MQTT.publishTopic(MQTT_HOST, MQTT_PORT, WORKERS_TO_SUPERVISOR, JSON.stringify(response))
                 break;
             case 'SEARCH':
                 LOG.logWorker('DEBUG', `SEARCH requested for ${msgJson['payload']['engine_id']}`, module.id)
@@ -91,7 +101,7 @@ function onMessageReceived(hostname, port, topic, message) {
                         sender_id: TOPIC_SELF,
                         payload: { rest_api: ROUTES.getRESTCredentials() }
                     }
-                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
+                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, WORKERS_TO_SUPERVISOR, JSON.stringify(response))
                 }
                 break;
             case 'GET_COMPLETE_DIAGRAM':
@@ -103,7 +113,7 @@ function onMessageReceived(hostname, port, topic, message) {
                         sender_id: TOPIC_SELF,
                         payload: { result: EGSM_ENGINE.getCompleteDiagram(msgJson['payload']['engine_id']) }
                     }
-                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
+                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, WORKERS_TO_SUPERVISOR, JSON.stringify(response))
                 }
                 break;
             case 'GET_COMPLETE_NODE_DIAGARM':
@@ -115,7 +125,7 @@ function onMessageReceived(hostname, port, topic, message) {
                         sender_id: TOPIC_SELF,
                         payload: { result: EGSM_ENGINE.getCompleteNodeDiagram(msgJson['payload']['engine_id']) }
                     }
-                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
+                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, WORKERS_TO_SUPERVISOR, JSON.stringify(response))
                 }
                 break;
             case 'PROCESS_SEARCH':
@@ -132,8 +142,37 @@ function onMessageReceived(hostname, port, topic, message) {
                     sender_id: TOPIC_SELF,
                     payload: { engines: engines }
                 }
-                MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
+                MQTT.publishTopic(MQTT_HOST, MQTT_PORT, WORKERS_TO_SUPERVISOR, JSON.stringify(response))
                 break;
+            case 'DELETE_ENGINE':
+                LOG.logWorker('DEBUG', `DELETE_ENGINE requested for ${msgJson['payload']['engine_id']}`, module.id)
+                if (EGSM_ENGINE.exists(msgJson['payload']['engine_id'])) {
+                    var response = {
+                        request_id: msgJson['request_id'],
+                        message_type: 'DELETE_ENGINE_RESP',
+                        sender_id: TOPIC_SELF,
+                        payload: { result: EGSM_ENGINE.removeEngine(msgJson['payload']['engine_id']) }
+                    }
+                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, WORKERS_TO_SUPERVISOR, JSON.stringify(response))
+                }
+                break;
+        }
+    }
+
+    else if (topic == AGGREGATORS_TO_WORKERS) {
+        switch (msgJson['message_type']) {
+            case 'PROCESS_GROUP_MEMBER_DISCOVERY':
+                LOG.logWorker('DEBUG', `PROCESS_GROUP_MEMBER_DISCOVERY requested`, module.id)
+                var result = EGSM_ENGINE.getFilteredProcesses(msgJson['payload']['rules'])
+                if (result.length > 0) {
+                    var response = {
+                        request_id: msgJson['request_id'],
+                        message_type: 'PROCESS_GROUP_MEMBER_DISCOVERY_RESP',
+                        sender_id: TOPIC_SELF,
+                        payload: { engines: result }
+                    }
+                    MQTT.publishTopic(MQTT_HOST, MQTT_PORT, WORKERS_TO_AGGREGATORS, JSON.stringify(response))
+                }
         }
     }
 
@@ -179,7 +218,7 @@ function onMessageReceived(hostname, port, topic, message) {
                     payload: resPayload,
                     message_type: 'GET_ENGINE_LIST_RESP'
                 }
-                MQTT.publishTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_IN, JSON.stringify(response))
+                MQTT.publishTopic(MQTT_HOST, MQTT_PORT, WORKERS_TO_SUPERVISOR, JSON.stringify(response))
                 break;
         }
     }
@@ -187,7 +226,7 @@ function onMessageReceived(hostname, port, topic, message) {
 
 /**
  * Creates a new eGSM engine in the EGSM_ENGINE module
- * @param {*} payload The received payload in the request which contains all information and files which are necessary to create a new engine instance
+ * @param {Object} payload The received payload in the request which contains all information and files which are necessary to create a new engine instance
  * @returns SUCCESS or ERROR objects with the appropriate message
  */
 function createNewEngine(payload) {
@@ -202,13 +241,14 @@ function createNewEngine(payload) {
 
     //Check if necessary data fields are available
     var engine_id = payload.engine_id
+    var stakeholders = payload.stakeholders
 
     var mqtt_broker = payload.mqtt_broker
     var mqtt_port = payload.mqtt_port
     var mqtt_user = payload.mqtt_user
     var mqtt_password = payload.mqtt_password
 
-    if (typeof engine_id == "undefined" || typeof mqtt_broker == "undefined" || mqtt_broker == "undefined" || typeof mqtt_port == "undefined"
+    if (typeof engine_id == "undefined" || typeof stakeholders == "undefined" || typeof mqtt_broker == "undefined" || mqtt_broker == "undefined" || typeof mqtt_port == "undefined"
         || typeof mqtt_user == "undefined" || typeof mqtt_password == "undefined") {
         LOG.logWorker('WARNING', 'Engine creation request cancelled. Argument(s) are missing', module.id)
         return responsePayload['error'] = 'ARGUMENT_MISSING'
@@ -251,7 +291,7 @@ function createNewEngine(payload) {
     EVENT_ROUTER.initConnections(engine_id, eventRouterConfig)
 
     //Creating new engine
-    EGSM_ENGINE.createNewEngine(engine_id, informalModel, processModel).then(
+    EGSM_ENGINE.createNewEngine(engine_id, informalModel, processModel, stakeholders).then(
         function (value) {
             if (value == 'created') {
                 LOG.logWorker('DEBUG', 'New engine created', module.id)
@@ -267,7 +307,7 @@ function createNewEngine(payload) {
 
 /**
  * Wrapper function to execute delay
- * @param {*} delay Required dely in millis
+ * @param {int} delay Required dely in millis
  */
 async function wait(delay) {
     await AUX.sleep(delay)
@@ -275,7 +315,7 @@ async function wait(delay) {
 
 /**
  * Executes an ID uniqueness verification through cooperating with other Workers 
- * @param {*} candidate ID candidate to verify uniqueness
+ * @param {string} candidate ID candidate to verify uniqueness
  * @returns A Promise, which becomes 'ok' if the ID was unique 'not_ok' otherwise
  */
 async function checkIdCandidate(candidate) {
@@ -297,7 +337,7 @@ async function checkIdCandidate(candidate) {
 
 /**
  * Init Broker connection the module will use. It will also find a unique ID for the Worker itself
- * @param {*} broker Broker credentials
+ * @param {Broker} broker Broker credentials
  * @returns Returns the own ID of the Worker
  */
 async function initPrimaryBrokerConnection(broker) {
@@ -321,7 +361,8 @@ async function initPrimaryBrokerConnection(broker) {
             MQTT.unsubscribeTopic(MQTT_HOST, MQTT_PORT, TOPIC_SELF)
         }
     }
-    MQTT.subscribeTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TOPIC_OUT)
+    MQTT.subscribeTopic(MQTT_HOST, MQTT_PORT, SUPERVISOR_TO_WORKERS)
+    MQTT.subscribeTopic(MQTT_HOST, MQTT_PORT, AGGREGATORS_TO_WORKERS)
     return TOPIC_SELF
 }
 

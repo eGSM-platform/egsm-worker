@@ -10,9 +10,9 @@ module.id = "ROUTES"
 var LOCAL_HOST_NAME = 'localhost' //TODO: retrieve it properly
 
 LOG.logWorker('DEBUG', 'Finding a port to open REST API', module.id)
-min = Math.ceil(8000);
-max = Math.floor(60000);
-var LOCAL_HTTP_PORT = Math.floor(Math.random() * (max - min + 1) + min);
+const MIN_PORT = 8000
+const MAX_PORT = 60000
+var LOCAL_HTTP_PORT = Math.floor(Math.random() * (MAX_PORT - MIN_PORT + 1) + MIN_PORT);
 LOG.logWorker('DEBUG', `Using port ${LOCAL_HTTP_PORT} to open REST API`, module.id)
 
 app.use(express.static(__dirname + '/public'));

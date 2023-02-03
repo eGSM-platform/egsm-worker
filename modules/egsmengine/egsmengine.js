@@ -1,21 +1,29 @@
 var xml2js = require('xml2js');
 
+var DDB = require('../egsm-common/database/databaseconnector')
 const EVENTR = require('../eventrouter/eventrouter');
 var EventManager = require('../egsm-common/auxiliary/eventManager');
 var LOG = require("../egsm-common/auxiliary/logManager")
+const { Validator } = require('../egsm-common/auxiliary/validator');
+var CONNCONFIG = require('../egsm-common/config/connectionconfig')
 
 //===============================================================DATA STRUCTURES BEGIN=========================================================================
-var MAX_ENGINES = 200
+var MAX_ENGINES = 50000
 var ENGINES = new Map();
 
-function Engine(id) {
-    const engineid = id; //Engine ID structure must be: <PROCESS_TYPE>__<INSTANCE_ID>__<PERSPECTIVE> (e.g.: "TRANSPORTATION__instance_1__Truck")
+//Data structures to calculate unique, sequentual event ID-s for each stage events
+var STAGE_EVENT_ID = new Map()
+
+function Engine(id, processstakeholders) {
+    const engineid = id; //Engine ID structure must be: <PROCESS_TYPE>/<INSTANCE_ID>__<PERSPECTIVE> (e.g.: "TRANSPORTATION/instance_1__Truck")
     const elements = id.split('__')
-    const process_type = elements[0]
-    const process_instance = elements[1]
-    const process_perspective = elements[2]
+    const elements2 = elements[0].split('/')
+    const process_type = elements2[0]
+    const process_instance = elements2[1]
+    const process_perspective = elements[1]
+    const stakeholders = processstakeholders
     const startTime = new Date().getTime() / 1000 / 60
-    var runningStatus = "running"
+    var lifeCycleStatus = "RUNNING" //RUNNING/FINISHED
 
     // initialize arrays containing process model elements
     var Data_array = {};        //data flow guards, process flow guards, fault loggers and milestones
@@ -81,7 +89,6 @@ function Engine(id) {
     }
 
     var updateInfoModel = function (name, value) {
-        console.log(`update model: ${name}->${value}`)
         var attrs = [];
         if (value != undefined && value != '') {
             attrs = [];
@@ -230,7 +237,7 @@ function Engine(id) {
         process_instance: process_instance,
         process_perspective: process_perspective,
         startTime: startTime,
-        runningStatus: runningStatus,
+        lifeCycleStatus: lifeCycleStatus,
 
         Data_array: Data_array,
         Stage_array: Stage_array,
@@ -476,15 +483,28 @@ var STAGE = {
     },
 
     logStageState: function () {
+        var eventid = STAGE_EVENT_ID.get(this.engineid) + 1
+        STAGE_EVENT_ID.set(this.engineid, eventid)
+
+        const elements = this.engineid.split('__')
+        const elements2 = elements[0].split('/')
+        const process_type = elements2[0]
+        const process_instance = elements2[1]
+        const process_perspective = elements[1]
+
         var eventJson = {
-            processid: this.engineid,
-            stagename: this.name,
+            process_type: process_type,
+            process_id: process_instance,
+            process_perspective: process_perspective,
+            event_id: 'event_' + eventid.toString(),
+            stage_name: this.name,
             timestamp: Date.now(),
             status: this.status,
             state: this.state,
             compliance: this.compliance,
+            whole: ENGINES.get(this.engineid).Stage_array
         }
-        EVENTR.publishLogEvent('stage', this.engineid, JSON.stringify(eventJson))
+        EVENTR.publishLogEvent('stage', this.engineid, process_type, process_instance, eventJson)
     },
 
     changeState: function (newState) {
@@ -991,6 +1011,17 @@ module.exports = {
     },
 
     /**
+     * Updates the lifecycle status (RUNNING/FINISHED) of an engine instance
+     * @param {string} engineid 
+     * @param {string} newstatus 
+     */
+    setEngineLifeCycleStatus(engineid, newstatus) {
+        if (ENGINES.has(engineid)) {
+            ENGINES.get(engineid).lifeCycleStatus = newstatus
+        }
+    },
+
+    /**
      * Get details of one Engine instance
      * @param {*} engineid Engine instance ID
      * @returns Engine Details object. If the Engine with the provided ID is not exists then it will return with an empty object
@@ -1003,7 +1034,7 @@ module.exports = {
                 instance_id: ENGINES.get(engineid).process_instance,
                 perspective: ENGINES.get(engineid).process_perspective,
                 uptime: (new Date().getTime() / 1000 / 60 - ENGINES.get(engineid).startTime).toPrecision(2).toString() + " min",
-                status: ENGINES.get(engineid).runningStatus
+                status: ENGINES.get(engineid).lifeCycleStatus
             }
         }
         return {}
@@ -1037,6 +1068,25 @@ module.exports = {
         result.forEach(element => {
             element['index'] = cnt
             cnt++
+        });
+        return result
+    },
+
+    /**
+     * Get the engines which meet with provided rules
+     * @param {Object} rules Object containing rules
+     * @returns List of Engine ID-s
+     */
+    getFilteredProcesses: function (rules) {
+        var filteredEngines = new Set()
+        for (let [key, value] of ENGINES) {
+            if (Validator.isRulesSatisfied(value, rules)) {
+                filteredEngines.add(key)
+            }
+        }
+        var result = []
+        filteredEngines.forEach(engine => {
+            result.push(this.getEngineDetails(engine))
         });
         return result
     },
@@ -1080,28 +1130,66 @@ module.exports = {
      * @param {*} processModel 
      * @returns 'created' if the operation was successfull, "already_exists" if the ID is already used
      */
-    createNewEngine: async function (engineid, informalModel, processModel) {
+    createNewEngine: async function (engineid, informalModel, processModel, stakeholders) {
+        var start = Date.now()
         if (ENGINES.has(engineid)) {
             return "already_exists"
         }
-        ENGINES.set(engineid, new Engine(engineid))
-        console.log("New Engine created")
+        STAGE_EVENT_ID.set(engineid, 0)
+        ENGINES.set(engineid, new Engine(engineid, stakeholders))
+        DDB.writeNewProcessInstance(ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_instance + '__' + ENGINES.get(engineid).process_perspective, stakeholders, Date.now() / 1000, CONNCONFIG.getConfig().primary_broker.host, CONNCONFIG.getConfig().primary_broker.port.toString())
         startEngine(engineid, informalModel, processModel)
-        //Notify Aggregators about the new Engine Instance
-        EVENTR.publishLifeCycleEvent(engineid, 'created')
+
+        const millis = Date.now() - start;
+        EVENTR.publishProcessLifecycleEvent('created', engineid, ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_instance, stakeholders)
         return 'created'
     },
 
-    removeEngine: function (engineid) {
+    /**
+     * Terminates and removes and engine specified by its ID
+     * @param {String} engineid Engine to terminate
+     * @returns 
+     */
+    removeEngine: async function (engineid) {
         if (!ENGINES.has(engineid)) {
             return "not_defined"
         }
+        //Engine found
+        //Perform database operations to update aggregation statistics
+        await DDB.increaseProcessTypeInstanceCounter(ENGINES.get(engineid).process_type)
+
+        var metrics = []
+        for (var key in ENGINES.get(engineid).Stage_array) {
+            metrics.push({
+                name: key,
+                state: ENGINES.get(engineid).Stage_array[key].state,
+                status: ENGINES.get(engineid).Stage_array[key].status,
+                compliance: ENGINES.get(engineid).Stage_array[key].compliance
+            })
+            //await DDB.increaseProcessTypeStatisticsCounter(ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_perspective, key, ENGINES.get(engineid).Stage_array[key].state)
+            //await DDB.increaseProcessTypeStatisticsCounter(ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_perspective, key, ENGINES.get(engineid).Stage_array[key].status)
+            //await DDB.increaseProcessTypeStatisticsCounter(ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_perspective, key, ENGINES.get(engineid).Stage_array[key].compliance)
+        }
+        await DDB.increaseProcessTypeStatisticsCounter(ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_perspective, metrics)
+        var outcome = 'SUCCESS'
+        for (var key in ENGINES.get(engineid).Stage_array) {
+            if (ENGINES.get(engineid).Stage_array[key].state == 'faulty' || ENGINES.get(engineid).Stage_array[key].compliance == 'outOfOrder') {
+                outcome = 'FAULTY'
+                break
+            }
+        }
+        await DDB.closeOngoingProcessInstance(ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_instance + '__' + ENGINES.get(engineid).process_perspective, Date.now() / 1000, outcome)
+        STAGE_EVENT_ID.delete(engineid)
+        EVENTR.publishProcessLifecycleEvent('destructed', engineid, ENGINES.get(engineid).process_type, ENGINES.get(engineid).process_instance, ENGINES.get(engineid).stakeholders)
         ENGINES.delete(engineid)
-        //Notify Aggregators about deleting the Engine
-        EVENTR.publishLifeCycleEvent(engineid, 'deleted')
-        return 'removed'
+        return 'deleted'
     },
 
+    /**
+     * Resets the specified engine
+     * @param {String} engineid Engine to reset
+     * @returns 
+     */
     resetEngine: function (engineid) {
         if (!ENGINES.has(engineid)) {
             return "not_defined"
